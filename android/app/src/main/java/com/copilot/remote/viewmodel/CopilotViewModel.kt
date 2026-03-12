@@ -92,6 +92,18 @@ class CopilotViewModel : ViewModel() {
     private val _serverUrl = MutableStateFlow("http://10.0.2.2:8787")
     val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
 
+    // ── App update state ──
+    data class UpdateInfo(
+        val available: Boolean = false,
+        val versionName: String = "",
+        val versionCode: Int = 0,
+        val apkUrl: String = "",
+        val downloading: Boolean = false,
+        val progress: Float = 0f,
+    )
+    private val _updateInfo = MutableStateFlow(UpdateInfo())
+    val updateInfo: StateFlow<UpdateInfo> = _updateInfo.asStateFlow()
+
     private var agentBuffer = StringBuilder()
     private var thoughtBuffer = StringBuilder()
     private var userBuffer = StringBuilder()
@@ -211,6 +223,105 @@ class CopilotViewModel : ViewModel() {
 
     fun setAuthLogin() {
         _authState.value = AuthState(status = "login")
+    }
+
+    // ── App update methods ──
+    fun checkForUpdate(serverUrl: String, token: String?, currentVersionCode: Int) {
+        viewModelScope.launch {
+            try {
+                val request = Request.Builder()
+                    .url("$serverUrl/api/version")
+                    .apply { if (token != null) addHeader("Authorization", "Bearer $token") }
+                    .get().build()
+                withContext(Dispatchers.IO) {
+                    httpClient.newCall(request).execute()
+                }.use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: "{}"
+                        val obj = org.json.JSONObject(body)
+                        val serverCode = obj.optInt("versionCode", 0)
+                        val serverName = obj.optString("versionName", "")
+                        val apkUrl = obj.optString("apkUrl", "")
+                        if (serverCode > currentVersionCode) {
+                            _updateInfo.value = UpdateInfo(
+                                available = true,
+                                versionName = serverName,
+                                versionCode = serverCode,
+                                apkUrl = apkUrl,
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) { /* silent — update check is best-effort */ }
+        }
+    }
+
+    fun downloadAndInstallUpdate(context: android.content.Context, token: String?) {
+        val info = _updateInfo.value
+        if (!info.available || info.downloading) return
+        _updateInfo.update { it.copy(downloading = true, progress = 0f) }
+
+        viewModelScope.launch {
+            try {
+                val url = "${_serverUrl.value}${info.apkUrl}" +
+                    if (token != null) "?token=$token" else ""
+                val request = Request.Builder().url(url).get().build()
+                withContext(Dispatchers.IO) {
+                    httpClient.newCall(request).execute()
+                }.use { response ->
+                    if (!response.isSuccessful) {
+                        _updateInfo.update { it.copy(downloading = false) }
+                        return@launch
+                    }
+                    val body = response.body ?: run {
+                        _updateInfo.update { it.copy(downloading = false) }
+                        return@launch
+                    }
+                    val totalBytes = body.contentLength()
+                    val updateDir = java.io.File(context.cacheDir, "updates").apply { mkdirs() }
+                    val apkFile = java.io.File(updateDir, "aether-update.apk")
+
+                    withContext(Dispatchers.IO) {
+                        body.byteStream().use { input ->
+                            apkFile.outputStream().use { output ->
+                                val buf = ByteArray(8192)
+                                var downloaded = 0L
+                                while (true) {
+                                    val n = input.read(buf)
+                                    if (n == -1) break
+                                    output.write(buf, 0, n)
+                                    downloaded += n
+                                    if (totalBytes > 0) {
+                                        _updateInfo.update { it.copy(progress = downloaded.toFloat() / totalBytes) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    _updateInfo.update { it.copy(downloading = false, progress = 1f) }
+                    installApk(context, apkFile)
+                }
+            } catch (e: Exception) {
+                _updateInfo.update { it.copy(downloading = false) }
+            }
+        }
+    }
+
+    private fun installApk(context: android.content.Context, apkFile: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", apkFile
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+
+    fun dismissUpdate() {
+        _updateInfo.update { it.copy(available = false) }
     }
 
     // ── Connection methods ──

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server as SocketIOServer } from "socket.io";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import { Readable, Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
@@ -14,6 +15,7 @@ import * as store from "./lib/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
+const APP_VERSION = { versionCode: 2, versionName: "5.2.0" };
 const COPILOT_PATH = process.env.COPILOT_PATH || "copilot";
 const COPILOT_ARGS = (process.env.COPILOT_ARGS || "").split(" ").filter(Boolean);
 const COPILOT_CWD = process.env.COPILOT_CWD || os.homedir();
@@ -320,6 +322,22 @@ app.get("/api/history", (req, res) => {
   const t = req.headers.authorization?.replace("Bearer ","");
   if (!authMod.needsSetup() && !authMod.verifyToken(t)) return res.status(401).json({ error: "Unauthorized" });
   res.json(store.listSavedWorkspaces());
+});
+app.get("/api/version", (req, res) => {
+  res.json({ ...APP_VERSION, apkUrl: "/api/download/apk" });
+});
+app.get("/api/download/apk", (req, res) => {
+  const t = req.headers.authorization?.replace("Bearer ","") || req.query.token;
+  if (!authMod.needsSetup() && !authMod.verifyToken(t)) return res.status(401).json({ error: "Unauthorized" });
+  // Check multiple possible APK locations
+  const candidates = [
+    path.join(__dirname, "data", "app-release.apk"),
+    path.join(__dirname, "android", "app", "build", "outputs", "apk", "release", "app-release.apk"),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) { res.download(p, `aether-${APP_VERSION.versionName}.apk`); return; }
+  }
+  res.status(404).json({ error: "APK not available" });
 });
 
 io.on("connection", async (socket) => {

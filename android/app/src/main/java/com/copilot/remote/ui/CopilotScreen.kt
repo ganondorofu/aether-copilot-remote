@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -54,6 +55,8 @@ fun CopilotScreen(
     val serverUrl by vm.serverUrl.collectAsState()
     val yoloLevel by vm.yoloLevel.collectAsState()
     val usage by vm.usage.collectAsState()
+    val updateInfo by vm.updateInfo.collectAsState()
+    val context = LocalContext.current
 
     // Stored preferences — use bundled flow to avoid race conditions
     val savedCreds = preferencesRepository?.savedCredentials?.collectAsState(initial = null)
@@ -121,6 +124,19 @@ fun CopilotScreen(
     val storedToken = savedCreds?.value?.authToken
     val storedWorkspaceId = savedCreds?.value?.workspaceId
     val storedUsername = savedCreds?.value?.username
+
+    // Check for app updates when connected
+    LaunchedEffect(connection.connected) {
+        if (connection.connected) {
+            val pkgInfo = try {
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            } catch (_: Exception) { null }
+            val currentCode = pkgInfo?.let {
+                if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt() else @Suppress("DEPRECATION") it.versionCode
+            } ?: 0
+            vm.checkForUpdate(storedUrl, storedToken, currentCode)
+        }
+    }
 
     // Show auth screens if needed
     if (!prefsLoaded || authState.status == "checking") {
@@ -700,12 +716,55 @@ fun CopilotScreen(
             }
         },
     ) { padding ->
-        LazyColumn(
-            state = listState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 12.dp),
+        ) {
+            // Update banner
+            if (updateInfo.available) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "v${updateInfo.versionName} available",
+                                fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                            if (updateInfo.downloading) {
+                                LinearProgressIndicator(
+                                    progress = { updateInfo.progress },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                )
+                            }
+                        }
+                        if (!updateInfo.downloading) {
+                            TextButton(onClick = { vm.dismissUpdate() }) {
+                                Text("Later", fontSize = 12.sp)
+                            }
+                            TextButton(onClick = { vm.downloadAndInstallUpdate(context, storedToken) }) {
+                                Text("Update", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
@@ -732,6 +791,7 @@ fun CopilotScreen(
                     is ChatItem.Done -> DoneChip(item.stopReason)
                 }
             }
+        }
         }
     }
     }
