@@ -69,7 +69,10 @@ function scrollDown() {
   const c = $('chat'); requestAnimationFrame(() => c.scrollTop = c.scrollHeight);
 }
 function renderMd(text) {
-  try { return marked.parse(text || ''); } catch { return esc(text); }
+  try {
+    const raw = marked.parse(text || '');
+    return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw) : raw;
+  } catch { return esc(text); }
 }
 function highlightCode(el) {
   if (typeof hljs !== 'undefined') el.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
@@ -162,9 +165,17 @@ function connect() {
 
 // ===== MESSAGE HANDLER =====
 function handleMsg(d) {
+  try {
   switch (d.type) {
     case 'init': handleInit(d); break;
-    case 'replay_start': S.replaying = true; break;
+    case 'replay_start': {
+      S.replaying = true;
+      // Clear the target session's chat before replay refills it
+      const rSid = d.sessionId || S.sid;
+      const rc = chats.get(rSid);
+      if (rc) { rc.el.innerHTML = ''; rc.agentEl = null; rc.agentBuf = ''; rc.thoughtEl = null; rc.thoughtBuf = ''; rc.tools.clear(); }
+      break;
+    }
     case 'replay_end': S.replaying = false; break;
     case 'chunk': handleChunk(d); break;
     case 'tool': addToolCard(d); break;
@@ -195,6 +206,7 @@ function handleMsg(d) {
     case 'yolo_update': S.yoloLevel = d.level; $('yolo-select').value = d.level; break;
     case 'dir_listing': renderDirListing(d); break;
   }
+  } catch (e) { console.error('handleMsg error:', e, d); }
 }
 
 function handleInit(d) {
@@ -227,8 +239,7 @@ function handleChunk(d) {
       c.el.appendChild(div);
     }
     c.agentBuf += d.text;
-    c.agentEl.querySelector('.md-content').innerHTML = renderMd(c.agentBuf);
-    scrollDown();
+    scheduleChunkRender(c, 'agent');
   } else if (d.role === 'thought') {
     if (!c.thoughtEl) {
       c.thoughtBuf = '';
@@ -243,9 +254,25 @@ function handleChunk(d) {
       c.el.appendChild(div);
     }
     c.thoughtBuf += d.text;
-    c.thoughtEl.querySelector('.thought-content').textContent = c.thoughtBuf;
-    scrollDown();
+    scheduleChunkRender(c, 'thought');
   }
+}
+// Throttle markdown re-renders during streaming (max every 80ms)
+const CHUNK_THROTTLE_MS = 80;
+function scheduleChunkRender(c, role) {
+  const key = '_renderTimer_' + role;
+  if (c[key]) return;
+  c[key] = setTimeout(() => {
+    c[key] = null;
+    if (role === 'agent' && c.agentEl) {
+      const md = c.agentEl.querySelector('.md-content');
+      if (md) md.innerHTML = renderMd(c.agentBuf);
+    } else if (role === 'thought' && c.thoughtEl) {
+      const tc = c.thoughtEl.querySelector('.thought-content');
+      if (tc) tc.textContent = c.thoughtBuf;
+    }
+    scrollDown();
+  }, CHUNK_THROTTLE_MS);
 }
 
 function addToolCard(d) {
@@ -265,13 +292,7 @@ function addToolCard(d) {
     ${contentText ? `<div class="tool-content" style="display:none"><pre>${contentText}</pre></div><button class="tool-content-toggle">Show details</button>` : ''}
     ${locs ? `<div class="tool-locations">${locs}</div>` : ''}
   `;
-  const toggleBtn = div.querySelector('.tool-content-toggle');
-  if (toggleBtn) toggleBtn.onclick = () => {
-    const tc = div.querySelector('.tool-content');
-    const show = tc.style.display === 'none';
-    tc.style.display = show ? '' : 'none';
-    toggleBtn.textContent = show ? 'Hide details' : 'Show details';
-  };
+  attachToolToggle(div);
   c.tools.set(d.toolCallId, div);
   c.el.appendChild(div);
   scrollDown();
@@ -294,9 +315,9 @@ function updateToolCard(d) {
       const btn = document.createElement('button');
       btn.className = 'tool-content-toggle';
       btn.textContent = 'Show details';
-      btn.onclick = () => { const s = tc.style.display === 'none'; tc.style.display = s?'':'none'; btn.textContent = s?'Hide details':'Show details'; };
       div.querySelector('.tool-header').after(tc);
       tc.after(btn);
+      attachToolToggle(div);
     }
     tc.innerHTML = `<pre>${renderToolContent(d.content)}</pre>`;
   }
@@ -316,6 +337,17 @@ function renderToolContent(content) {
     return esc(JSON.stringify(c));
   }).join('\n');
 }
+function attachToolToggle(div) {
+  const btn = div.querySelector('.tool-content-toggle');
+  if (!btn) return;
+  btn.onclick = () => {
+    const tc = div.querySelector('.tool-content');
+    if (!tc) return;
+    const show = tc.style.display === 'none';
+    tc.style.display = show ? '' : 'none';
+    btn.textContent = show ? 'Hide details' : 'Show details';
+  };
+}
 function renderDiff(text) {
   return text.split('\n').map(l => {
     if (l.startsWith('+++') || l.startsWith('---')) return `<span class="diff-path">${esc(l)}</span>`;
@@ -329,17 +361,21 @@ function renderDiff(text) {
 function handleDone(d) {
   const sid = d.sessionId || S.sid;
   const c = ensureChat(sid);
+  // Cancel any pending chunk renders
+  if (c._renderTimer_agent) { clearTimeout(c._renderTimer_agent); c._renderTimer_agent = null; }
+  if (c._renderTimer_thought) { clearTimeout(c._renderTimer_thought); c._renderTimer_thought = null; }
   // Finalize agent message + highlight code
   if (c.agentEl && c.agentBuf) {
-    c.agentEl.querySelector('.md-content').innerHTML = renderMd(c.agentBuf);
-    highlightCode(c.agentEl);
+    const md = c.agentEl.querySelector('.md-content');
+    if (md) { md.innerHTML = renderMd(c.agentBuf); highlightCode(c.agentEl); }
     c.agentEl = null; c.agentBuf = '';
   }
   // Collapse thought
   if (c.thoughtEl) {
     const tc = c.thoughtEl.querySelector('.thought-content');
     if (tc) tc.style.display = 'none';
-    c.thoughtEl.querySelector('.thought-toggle').innerHTML = `${icon('bulb',14)} Thought (${(c.thoughtBuf||'').length} chars)`;
+    const tg = c.thoughtEl.querySelector('.thought-toggle');
+    if (tg) tg.innerHTML = `${icon('bulb',14)} Thought (${(c.thoughtBuf||'').length} chars)`;
     c.thoughtEl = null; c.thoughtBuf = '';
   }
   c.tools.clear();
@@ -661,7 +697,9 @@ function renderDirListing(d) {
 
 // ===== ATTACHMENTS =====
 function handleFileInput(e) {
+  const MAX_ATTACHMENTS = 10;
   for (const file of Array.from(e.target.files)) {
+    if (S.attachments.length >= MAX_ATTACHMENTS) break;
     if (!file.type.startsWith('image/')) continue;
     if (file.size > 10 * 1024 * 1024) continue;
     const reader = new FileReader();

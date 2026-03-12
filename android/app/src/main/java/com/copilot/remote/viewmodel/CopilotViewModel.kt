@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.copilot.remote.model.*
 import com.copilot.remote.network.CopilotWebSocket
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,6 +98,7 @@ class CopilotViewModel : ViewModel() {
     private var bufferTargetSid: String? = null
     private var replaying = false
     private var replaySessionId: String? = null
+    private var eventCollectionJob: Job? = null
 
     /** Determine which session a message should be routed to */
     private fun resolveTargetSid(data: org.json.JSONObject?): String? {
@@ -141,13 +143,20 @@ class CopilotViewModel : ViewModel() {
         }
     }
 
-    fun setup(serverUrl: String, username: String, password: String, onSuccess: (String, String) -> Unit) {
+    private fun authenticate(
+        serverUrl: String,
+        endpoint: String,
+        username: String,
+        password: String,
+        statusOnError: String,
+        onSuccess: (String, String) -> Unit
+    ) {
         viewModelScope.launch {
             try {
                 val requestBody = json.encodeToString(AuthRequest.serializer(), 
                     AuthRequest(username, password))
                 val request = Request.Builder()
-                    .url("$serverUrl/api/auth/setup")
+                    .url("$serverUrl/api/auth/$endpoint")
                     .post(requestBody.toRequestBody("application/json".toMediaType()))
                     .build()
 
@@ -160,43 +169,22 @@ class CopilotViewModel : ViewModel() {
                         _authState.value = AuthState(status = "authenticated", username = authResponse.username)
                         onSuccess(authResponse.token, authResponse.username)
                     } else {
-                        val errorResponse = try { json.decodeFromString<ErrorResponse>(body) } catch (_: Exception) { ErrorResponse("Setup failed: ${response.code}") }
-                        _authState.value = AuthState(status = "setup", error = errorResponse.error)
+                        val errorResponse = try { json.decodeFromString<ErrorResponse>(body) } catch (_: Exception) { ErrorResponse("${endpoint.replaceFirstChar { it.uppercase() }} failed: ${response.code}") }
+                        _authState.value = AuthState(status = statusOnError, error = errorResponse.error)
                     }
                 }
             } catch (e: Exception) {
-                _authState.value = AuthState(status = "setup", error = "Cannot connect: ${e.message}")
+                _authState.value = AuthState(status = statusOnError, error = "Cannot connect: ${e.message}")
             }
         }
     }
 
-    fun login(serverUrl: String, username: String, password: String, onSuccess: (String, String) -> Unit) {
-        viewModelScope.launch {
-            try {
-                val requestBody = json.encodeToString(AuthRequest.serializer(), 
-                    AuthRequest(username, password))
-                val request = Request.Builder()
-                    .url("$serverUrl/api/auth/login")
-                    .post(requestBody.toRequestBody("application/json".toMediaType()))
-                    .build()
+    fun setup(serverUrl: String, username: String, password: String, onSuccess: (String, String) -> Unit) {
+        authenticate(serverUrl, "setup", username, password, "setup", onSuccess)
+    }
 
-                withContext(Dispatchers.IO) {
-                    httpClient.newCall(request).execute()
-                }.use { response ->
-                    val body = response.body?.string() ?: "{}"
-                    if (response.isSuccessful) {
-                        val authResponse = json.decodeFromString<AuthResponse>(body)
-                        _authState.value = AuthState(status = "authenticated", username = authResponse.username)
-                        onSuccess(authResponse.token, authResponse.username)
-                    } else {
-                        val errorResponse = try { json.decodeFromString<ErrorResponse>(body) } catch (_: Exception) { ErrorResponse("Login failed: ${response.code}") }
-                        _authState.value = AuthState(status = "login", error = errorResponse.error)
-                    }
-                }
-            } catch (e: Exception) {
-                _authState.value = AuthState(status = "login", error = "Cannot connect: ${e.message}")
-            }
-        }
+    fun login(serverUrl: String, username: String, password: String, onSuccess: (String, String) -> Unit) {
+        authenticate(serverUrl, "login", username, password, "login", onSuccess)
     }
 
     fun logout(serverUrl: String, token: String) {
@@ -228,11 +216,13 @@ class CopilotViewModel : ViewModel() {
     // ── Connection methods ──
     fun connect(serverUrl: String, authToken: String?, cwd: String? = null, workspaceId: String? = null) {
         _serverUrl.value = serverUrl
+        // Cancel previous event collector to prevent duplicates
+        eventCollectionJob?.cancel()
         // Keep workspaceId during reconnect — only reset session state
         _connection.update { it.copy(connected = false, sessionId = null, sessions = emptyList()) }
         client.connect(serverUrl, authToken, cwd, workspaceId)
 
-        viewModelScope.launch {
+        eventCollectionJob = viewModelScope.launch {
             client.events.collect { event ->
                 when (event) {
                     is CopilotWebSocket.Event.Connected -> {
@@ -686,9 +676,9 @@ class CopilotViewModel : ViewModel() {
         val text = agentBuffer.toString()
         val targetSid = sid ?: bufferTargetSid ?: currentSessionId() ?: return
         val chat = getSessionChat(targetSid)
-        val last = chat.lastOrNull()
-        if (last is ChatItem.AgentMessage) {
-            chat[chat.lastIndex] = last.copy(text = text)
+        val idx = chat.size - 1
+        if (idx >= 0 && chat[idx] is ChatItem.AgentMessage) {
+            chat[idx] = (chat[idx] as ChatItem.AgentMessage).copy(text = text)
         } else {
             chat.add(ChatItem.AgentMessage(text))
         }
@@ -699,9 +689,9 @@ class CopilotViewModel : ViewModel() {
         val text = thoughtBuffer.toString()
         val targetSid = sid ?: bufferTargetSid ?: currentSessionId() ?: return
         val chat = getSessionChat(targetSid)
-        val last = chat.lastOrNull()
-        if (last is ChatItem.ThoughtMessage) {
-            chat[chat.lastIndex] = last.copy(text = text)
+        val idx = chat.size - 1
+        if (idx >= 0 && chat[idx] is ChatItem.ThoughtMessage) {
+            chat[idx] = (chat[idx] as ChatItem.ThoughtMessage).copy(text = text)
         } else {
             chat.add(ChatItem.ThoughtMessage(text))
         }
@@ -712,9 +702,9 @@ class CopilotViewModel : ViewModel() {
         val text = userBuffer.toString()
         val targetSid = sid ?: bufferTargetSid ?: currentSessionId() ?: return
         val chat = getSessionChat(targetSid)
-        val last = chat.lastOrNull()
-        if (last is ChatItem.UserMessage) {
-            chat[chat.lastIndex] = last.copy(text = text)
+        val idx = chat.size - 1
+        if (idx >= 0 && chat[idx] is ChatItem.UserMessage) {
+            chat[idx] = (chat[idx] as ChatItem.UserMessage).copy(text = text)
         } else {
             chat.add(ChatItem.UserMessage(text))
         }
@@ -739,7 +729,10 @@ class CopilotViewModel : ViewModel() {
     private fun flushUser() { if (userBuffer.isNotEmpty()) userBuffer.clear() }
 
     override fun onCleared() {
+        eventCollectionJob?.cancel()
         client.disconnect()
+        httpClient.dispatcher.executorService.shutdown()
+        httpClient.connectionPool.evictAll()
         super.onCleared()
     }
 }

@@ -44,6 +44,11 @@ function rateLimit(key, max) {
   if (!b || b.r < now) { b = { c: 0, r: now + 60000 }; rateBuckets.set(key, b); }
   return ++b.c > max;
 }
+// Periodic cleanup of expired rate-limit buckets (every 5 min)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, b] of rateBuckets) if (b.r < now) rateBuckets.delete(k);
+}, 300000);
 
 app.get("/api/auth/status", (req, res) => {
   const t = req.headers.authorization?.replace("Bearer ", "");
@@ -275,6 +280,9 @@ async function restoreWorkspace(savedId) {
 
   // Write history with new session IDs so getReplay() works
   for (const [oldSid, newSid] of idMap) {
+    // Skip if new JSONL already has data (previous restore)
+    const existing = store.loadMessages(newSid);
+    if (existing.length > 0) continue;
     const messages = store.loadMessages(oldSid).filter(m => Workspace.REPLAY_TYPES.has(m.type));
     if (!messages.length) continue;
     for (const m of messages) m.sessionId = newSid;
@@ -389,7 +397,19 @@ io.on("connection", async (socket) => {
   socket.on("delete_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid)||ws.sessions.size<=1)return; ws.sessions.delete(sid); store.deleteSessionHistory(sid); if(ws.activeSessionId===sid)ws.activeSessionId=ws.sessions.keys().next().value; const s=ws.sessions.get(ws.activeSessionId); ws.saveMeta(); ws.send({type:"session_deleted",deletedSessionId:sid,sessionId:ws.activeSessionId,cwd:s?.cwd,sessions:ws.sessionList()}); });
   socket.on("rename_session", d => { if(!ws)return; const sid=d?.sessionId||ws.activeSessionId,title=d?.title?.trim(); if(!title||!ws.sessions.has(sid))return; ws.sessions.get(sid).title=title; ws.sessions.get(sid).titleSet=true; ws.saveMeta(); ws.send({type:"session_renamed",sessionId:sid,title,sessions:ws.sessionList()}); });
   socket.on("set_yolo", d => { if(!ws)return; const lv=Number(d?.level); if(lv>=0&&lv<=3){ws.yoloLevel=lv;ws.send({type:"yolo_update",level:lv});} });
-  socket.on("browse_dir", (d, cb) => { const r=store.listDirectory(d?.path||COPILOT_CWD); if(typeof cb==="function")cb(r); else socket.emit("msg",{type:"dir_listing",...r}); });
+  socket.on("browse_dir", (d, cb) => {
+    const reqPath = d?.path || COPILOT_CWD;
+    const resolved = path.resolve(reqPath);
+    // Block path traversal outside home directory
+    const home = os.homedir();
+    if (!resolved.startsWith(home) && !resolved.startsWith("/tmp")) {
+      const err = { path: reqPath, entries: [], error: "Access denied: outside home directory" };
+      if (typeof cb === "function") cb(err); else socket.emit("msg", { type: "dir_listing", ...err });
+      return;
+    }
+    const r = store.listDirectory(reqPath);
+    if (typeof cb === "function") cb(r); else socket.emit("msg", { type: "dir_listing", ...r });
+  });
   socket.on("destroy_workspace", () => { if(ws){ws.destroy();ws=null;} });
   socket.on("disconnect", () => { if(ws)ws.detach(socket); ws=null; });
 });
