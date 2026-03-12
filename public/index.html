@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ja" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Aether</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark-dimmed.min.css" id="hljs-dark" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" id="hljs-light" disabled />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='8' r='3' fill='%235b8def'/><circle cx='8' cy='24' r='3' fill='%235b8def'/><circle cx='24' cy='24' r='3' fill='%235b8def'/><path d='M16 11L8 21M16 11l8 10M11 24h10' stroke='%235b8def' stroke-width='2' fill='none'/></svg>" />
+</head>
+<body>
+  <!-- Auth overlay -->
+  <div class="auth-overlay" id="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <svg viewBox="0 0 32 32" width="48" height="48" fill="none">
+          <circle cx="16" cy="8" r="3" fill="var(--accent)"/>
+          <circle cx="8" cy="24" r="3" fill="var(--accent)"/>
+          <circle cx="24" cy="24" r="3" fill="var(--accent)"/>
+          <path d="M16 11L8 21M16 11l8 10M11 24h10" stroke="var(--accent)" stroke-width="2"/>
+        </svg>
+      </div>
+      <h1 class="auth-title">Aether</h1>
+      <p class="auth-subtitle" id="auth-subtitle">Copilot Remote Control</p>
+      <form class="auth-form" id="auth-form">
+        <input type="text" id="auth-user" placeholder="Username" autocomplete="username" required />
+        <input type="password" id="auth-pass" placeholder="Password" autocomplete="current-password" required />
+        <button type="submit" class="btn-primary" id="auth-submit">Sign In</button>
+        <div class="auth-error" id="auth-error"></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app" id="app" style="display:none">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <svg class="brand-logo" viewBox="0 0 32 32" width="24" height="24" fill="none">
+            <circle cx="16" cy="8" r="3" fill="var(--accent)"/>
+            <circle cx="8" cy="24" r="3" fill="var(--accent)"/>
+            <circle cx="24" cy="24" r="3" fill="var(--accent)"/>
+            <path d="M16 11L8 21M16 11l8 10M11 24h10" stroke="var(--accent)" stroke-width="2"/>
+          </svg>
+          <span class="sidebar-title">Aether</span>
+          <span class="status-dot" id="status-dot"></span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="icon-btn icon-btn-sm" id="theme-btn" title="Theme"></button>
+          <button class="icon-btn icon-btn-sm" id="settings-btn" title="Settings"></button>
+          <button class="icon-btn icon-btn-sm sidebar-new-btn" id="session-add-btn" title="New session"></button>
+        </div>
+      </div>
+      <div class="sidebar-sessions" id="sidebar-sessions">
+        <div class="sidebar-empty">No sessions</div>
+      </div>
+      <div class="sidebar-footer">
+        <button class="sidebar-logout" id="logout-btn" title="Logout"></button>
+      </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Main -->
+    <div class="main-ui" id="main-ui">
+      <header class="header">
+        <div class="header-left">
+          <button class="icon-btn hamburger-btn" id="hamburger-btn" title="Menu"></button>
+          <h1 class="header-session-title" id="header-session-title">Aether</h1>
+          <span class="badge" id="status-badge">connecting</span>
+        </div>
+        <div class="header-right">
+          <select id="yolo-select" class="select-pill yolo-pill" title="Permission Level">
+            <option value="0">Normal</option>
+            <option value="1">Trust reads</option>
+            <option value="2">Trust most</option>
+            <option value="3">YOLO</option>
+          </select>
+          <select id="model-select" class="select-pill" title="Model"><option value="">Model</option></select>
+          <div class="mode-tabs" id="mode-tabs"></div>
+        </div>
+      </header>
+      <div class="cwd-bar">
+        <span class="cwd-display" id="cwd-display"></span>
+        <button class="cwd-browse" id="cwd-browse" title="Browse"></button>
+      </div>
+      <!-- Dialogs -->
+      <div class="dialog-overlay" id="new-session-dialog" hidden>
+        <div class="dialog-card">
+          <h3>New Session</h3>
+          <label>Working Directory</label>
+          <input type="text" id="new-session-cwd" placeholder="/path/to/project" />
+          <label>Title (optional)</label>
+          <input type="text" id="new-session-title" placeholder="Session name" />
+          <div class="dialog-actions">
+            <button id="new-session-cancel" class="btn-secondary">Cancel</button>
+            <button id="new-session-create" class="btn-primary">Create</button>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-overlay" id="file-browser-dialog" hidden>
+        <div class="dialog-card dialog-wide">
+          <div class="dialog-header"><h3>Browse Directory</h3><button class="icon-btn" id="file-browser-close"></button></div>
+          <div class="file-browser-path" id="file-browser-path"></div>
+          <div class="file-browser-list" id="file-browser-list"></div>
+          <div class="dialog-actions">
+            <button id="file-browser-cancel" class="btn-secondary">Cancel</button>
+            <button id="file-browser-select" class="btn-primary">Select</button>
+          </div>
+        </div>
+      </div>
+      <!-- Settings -->
+      <section class="settings-panel" id="settings-panel" hidden>
+        <div class="settings-header"><h3>Settings</h3><button class="icon-btn" id="settings-close"></button></div>
+        <div class="settings-body" id="settings-body"></div>
+      </section>
+      <!-- Plan -->
+      <section class="plan-panel" id="plan-panel" hidden>
+        <div class="plan-header"><span>Plan</span><button class="icon-btn" id="plan-toggle"></button></div>
+        <div class="plan-body" id="plan-body"></div>
+      </section>
+      <!-- Chat -->
+      <section class="chat" id="chat"></section>
+      <!-- Permission -->
+      <section class="permission-overlay" id="permission-overlay" hidden>
+        <div class="permission-queue" id="permission-queue"></div>
+      </section>
+      <!-- Command palette -->
+      <div class="command-palette" id="command-palette" hidden>
+        <div class="command-list" id="command-list"></div>
+      </div>
+      <!-- Input -->
+      <section class="input-area">
+        <div class="input-attachments" id="input-attachments" hidden></div>
+        <div class="input-row">
+          <button class="icon-btn attach-btn" id="attach-btn" title="Attach file"></button>
+          <input type="file" id="file-input" accept="image/*" hidden multiple />
+          <textarea id="prompt" rows="1" placeholder="Message... ( / for commands)" autocomplete="off"></textarea>
+          <button id="send-btn" class="send-btn" title="Send (Ctrl+Enter)"></button>
+          <button id="cancel-btn" class="cancel-btn" title="Cancel" hidden></button>
+        </div>
+        <div class="input-hint"><span id="usage-display"></span></div>
+      </section>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

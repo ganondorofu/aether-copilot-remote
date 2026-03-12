@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Data & auth (server-generated)
+data/
+
+# Android build
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Logs
+*.log
+nohup.out

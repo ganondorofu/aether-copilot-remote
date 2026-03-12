@@ -1,0 +1,25 @@
+{
+  "name": "copilot-remote-ui",
+  "version": "5.0.0",
+  "type": "module",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js",
+    "relay": "node relay.js",
+    "daemon": "node daemon.js",
+    "legacy-ws": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Remote UI for GitHub Copilot CLI — browser/mobile access via Socket.IO + ACP",
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.16.0",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "ws": "^8.19.0"
+  }
+}
