@@ -403,7 +403,7 @@ fun CopilotScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Sign Out")
             }
@@ -437,8 +437,8 @@ fun CopilotScreen(
                 title = {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("⬡", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
-                            Text("Copilot", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text("△", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
+                            Text("Aether", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             // Status badge
                             Surface(
                                 shape = CircleShape,
@@ -755,7 +755,7 @@ fun NavigationDrawerContent(
                     modifier = Modifier.size(40.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("⬡", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
+                        Text("△", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 }
                 Column {
@@ -1257,10 +1257,10 @@ fun SetupScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("⬡", fontSize = 48.sp)
+        Text("△", fontSize = 48.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Copilot Remote",
+            "Aether",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -1334,10 +1334,10 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("⬡", fontSize = 48.sp)
+        Text("△", fontSize = 48.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Copilot Remote",
+            "Aether",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )

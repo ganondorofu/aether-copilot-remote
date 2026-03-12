@@ -64,7 +64,7 @@ class MainActivity : FragmentActivity() {
                                         }
                                     })
                                 val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                                    .setTitle("Copilot Remote")
+                                    .setTitle("Aether")
                                     .setSubtitle("Authenticate to continue")
                                     .setAllowedAuthenticators(
                                         BiometricManager.Authenticators.BIOMETRIC_WEAK or
@@ -107,7 +107,7 @@ fun LockScreen(onAuthenticate: () -> Unit) {
             tint = MaterialTheme.colorScheme.primary,
         )
         Spacer(Modifier.height(16.dp))
-        Text("Copilot Remote", style = MaterialTheme.typography.headlineMedium)
+        Text("Aether", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(8.dp))
         Text("Tap to unlock", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
