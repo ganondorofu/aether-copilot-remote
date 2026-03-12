@@ -1,0 +1,14 @@
+services:
+  aether:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      - aether-data:/app/data
+    environment:
+      - COPILOT_PATH=copilot
+      - COPILOT_CWD=/workspace
+    restart: unless-stopped
+
+volumes:
+  aether-data:

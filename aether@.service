@@ -1,0 +1,16 @@
+[Unit]
+Description=Aether — Copilot Remote Control
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/aether
+ExecStart=/usr/bin/node start.js
+Restart=on-failure
+RestartSec=5
+Environment=PORT=8787
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

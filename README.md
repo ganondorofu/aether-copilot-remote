@@ -1,114 +1,111 @@
 # Aether — Copilot Remote Control
 
-GitHub Copilot CLI をブラウザ・Androidアプリからリモート操作するWebアプリケーション。
+<p align="center">
+  <img src="https://img.shields.io/badge/self--hosted-yes-blue" alt="self-hosted" />
+  <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="node >= 18" />
+  <img src="https://img.shields.io/badge/license-MIT-brightgreen" alt="MIT" />
+</p>
+
+GitHub Copilot CLI をブラウザ・Androidアプリからリモート操作できるセルフホスト型Webアプリ。  
+Self-hosted web app to remotely control GitHub Copilot CLI from browser & Android.
 
 ```
 ┌─────────────────┐                   ┌───────────────┐     ACP/stdio     ┌──────────────┐
 │  Browser         │   Socket.IO      │               │ ◄───────────────► │              │
-│  Android App     │ ◄──────────────► │  Server       │                   │  Copilot CLI │
-│  (clients)       │   (multi-client) │  (start.js)   │                   │  (--acp)     │
+│  Android App     │ ◄──────────────► │  Aether       │                   │  Copilot CLI │
+│  (multi-client)  │                  │  (start.js)   │                   │  (--acp)     │
 └─────────────────┘                   └───────────────┘                   └──────────────┘
 ```
 
-## 特徴
+## Getting Started
 
-- 🌐 **マルチクライアント** — Web・モバイルから同時接続、同じワークスペースを共有
-- 🔒 **認証** — ユーザー名/パスワード認証 + JWTトークン
-- 📱 **Androidアプリ** — Material 3 Kotlin/Compose、生体認証ロック対応
-- 💬 **リアルタイム通信** — Socket.IO v4 による双方向メッセージング
-- 🔄 **リプレイ** — 再接続時にチャット履歴を自動復元
-- 🤖 **フル機能** — モデル/モード切替、YOLO設定、ツール実行、パーミッション管理
-- 📂 **セッション管理** — 複数セッション、ディレクトリ指定、リネーム、削除
+### 前提条件 / Prerequisites
 
-## クイックスタート
+- **Node.js 18+**
+- **GitHub Copilot CLI** がインストール済み（`copilot --version` で確認）
 
-### 1. サーバー起動
+### 方法 1: 直接実行
 
 ```bash
-cd copilot-remote-ui
+git clone https://github.com/<your-username>/aether.git
+cd aether
 npm install
-node start.js          # http://localhost:8787
+node start.js
 ```
 
-初回アクセス時にアカウント作成画面が表示されます。
+→ `http://localhost:8787` にアクセス → 初回はアカウント作成
 
-### 2. 環境変数
-
-| 変数 | デフォルト | 説明 |
-|------|-----------|------|
-| `PORT` | `8787` | サーバーポート |
-| `COPILOT_PATH` | `copilot` | Copilot CLI のパス |
-| `COPILOT_CWD` | `process.cwd()` | デフォルト作業ディレクトリ |
-| `COPILOT_ARGS` | `` | Copilot CLI 追加引数 |
-| `WORKSPACE_IDLE_TIMEOUT_MS` | `1800000` | ワークスペースアイドルタイムアウト (30分) |
-
-### 3. Web クライアント
-
-ブラウザで `http://localhost:8787` にアクセス → ログイン → チャット開始。
-
-### 4. Android クライアント
+### 方法 2: Docker
 
 ```bash
-cd android && ./gradlew assembleDebug
-# APK: android/app/build/outputs/apk/debug/app-debug.apk
+git clone https://github.com/<your-username>/aether.git
+cd aether
+docker compose up -d
 ```
 
-## 機能一覧
+### 方法 3: systemd サービス
 
-| 機能 | Web | Android |
-|------|-----|---------|
-| プロンプト送信 | ✅ | ✅ |
-| モデル選択 (16+モデル) | ✅ | ✅ |
-| モード切替 (Agent/Plan) | ✅ | ✅ |
-| パーミッション応答 | ✅ | ✅ |
-| スラッシュコマンド | ✅ | ✅ |
-| ツール実行表示 (折りたたみ) | ✅ | ✅ |
-| 思考プロセス (折りたたみ) | ✅ | ✅ |
-| Markdownレンダリング | ✅ | ✅ |
-| セッション管理 | ✅ | ✅ |
-| YOLO設定 | ✅ | ✅ |
-| 使用量表示 | ✅ | ✅ |
-| ダーク/ライトテーマ | ✅ | ✅ |
-| 生体認証ロック | — | ✅ |
-| マルチクライアント同期 | ✅ | ✅ |
-| チャット履歴リプレイ | ✅ | ✅ |
+```bash
+sudo cp aether@.service /etc/systemd/system/
+sudo systemctl enable --now aether@$USER
+```
 
-## Socket.IO プロトコル
+### Android アプリ
 
-### クライアント → サーバー
+[Releases](../../releases) から APK をダウンロード → インストール → サーバーURL入力 → ログイン
 
-| イベント | 説明 |
-|---------|------|
-| `auto_connect` | ワークスペース自動接続 |
-| `prompt` | プロンプト送信 |
-| `permission_response` | パーミッション応答 |
-| `cancel` | 実行キャンセル |
-| `set_mode` / `set_model` | モード/モデル変更 |
-| `set_yolo` | YOLO レベル変更 |
-| `create_session` | 新規セッション作成 (CWD指定可) |
-| `switch_session` / `delete_session` | セッション操作 |
+## 機能 / Features
 
-### サーバー → クライアント (`msg` イベント)
+| Feature | Web | Android |
+|---------|-----|---------|
+| Prompt & Chat | ✅ | ✅ |
+| Model selection (16+ models) | ✅ | ✅ |
+| Mode switching (Agent/Plan) | ✅ | ✅ |
+| Permission management | ✅ | ✅ |
+| Slash commands | ✅ | ✅ |
+| Tool call display (collapsible) | ✅ | ✅ |
+| Thinking process (collapsible) | ✅ | ✅ |
+| Markdown rendering | ✅ | ✅ |
+| Session management | ✅ | ✅ |
+| YOLO levels | ✅ | ✅ |
+| Usage stats | ✅ | ✅ |
+| Dark/Light theme | ✅ | ✅ |
+| Multi-client sync | ✅ | ✅ |
+| Chat history replay | ✅ | ✅ |
+| Biometric app lock | — | ✅ |
 
-| type | 説明 |
-|------|------|
-| `init` | ワークスペース初期化情報 |
-| `chunk` | テキストチャンク (agent/thought/user) |
-| `tool` / `tool_update` | ツール実行状態 |
-| `permission` | パーミッション要求 |
-| `permission_resolved` | パーミッション解決通知 |
-| `session_created` / `session_switched` | セッション変更通知 |
-| `replay_start` / `replay_end` | リプレイ開始/終了 |
-| `usage` | トークン使用量 |
+## 環境変数 / Configuration
 
-## 技術スタック
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8787` | Server port |
+| `COPILOT_PATH` | `copilot` | Path to Copilot CLI binary |
+| `COPILOT_CWD` | `process.cwd()` | Default working directory |
+| `COPILOT_ARGS` | | Extra CLI arguments |
+| `WORKSPACE_IDLE_TIMEOUT_MS` | `1800000` | Idle timeout (30 min) |
 
-- **Server**: Node.js + Express + Socket.IO v4 + ACP SDK
-- **Web**: Vanilla JS + Socket.IO client
-- **Android**: Kotlin + Jetpack Compose + Material 3 + Socket.IO Java Client + Markwon
-- **Auth**: bcrypt + JWT
-- **Data**: JSON ファイルベース永続化
+## セキュリティ / Security
 
-## ライセンス
+- ユーザー名/パスワード認証（scrypt ハッシュ）
+- JWT トークンベースのセッション管理
+- 認証情報は `data/` ディレクトリにローカル保存
+- **インターネット公開時は必ずリバースプロキシ (nginx等) + HTTPS を使用してください**
+
+## Android APK ビルド
+
+```bash
+cd android
+./gradlew assembleRelease    # or assembleDebug
+# → app/build/outputs/apk/
+```
+
+## Tech Stack
+
+- **Server**: Node.js + Express + Socket.IO v4 + [ACP SDK](https://github.com/nickarora/acp-sdk)
+- **Web**: Vanilla JS + marked.js + highlight.js
+- **Android**: Kotlin + Jetpack Compose + Material 3 + Markwon
+- **Auth**: scrypt + JWT (no external DB)
+
+## License
 
 MIT
