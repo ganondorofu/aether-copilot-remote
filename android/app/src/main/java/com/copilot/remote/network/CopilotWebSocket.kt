@@ -38,13 +38,15 @@ class CopilotWebSocket(
         data class ModeUpdate(val data: JSONObject) : Event()
         data class ModelUpdate(val data: JSONObject) : Event()
         data class ConfigUpdate(val data: JSONObject) : Event()
-        data object PromptStart : Event()
-        data object PromptEnd : Event()
-        data object ReplayStart : Event()
-        data object ReplayEnd : Event()
+        data class PromptStart(val sessionId: String?) : Event()
+        data class PromptEnd(val sessionId: String?) : Event()
+        data class Done(val data: JSONObject) : Event()
+        data class ReplayStart(val sessionId: String?) : Event()
+        data class ReplayEnd(val sessionId: String?) : Event()
         data class Error(val message: String) : Event()
         data class Status(val data: JSONObject) : Event()
         data class AuthRequired(val message: String) : Event()
+        data class UserMessage(val data: JSONObject) : Event()
         data class PermissionResolved(val requestId: String) : Event()
     }
 
@@ -137,17 +139,19 @@ class CopilotWebSocket(
             "mode_update" -> _events.trySend(Event.ModeUpdate(data))
             "model_update" -> _events.trySend(Event.ModelUpdate(data))
             "config_update" -> _events.trySend(Event.ConfigUpdate(data))
-            "prompt_start" -> _events.trySend(Event.PromptStart)
-            "prompt_end" -> _events.trySend(Event.PromptEnd)
+            "prompt_start" -> _events.trySend(Event.PromptStart(data.optString("sessionId", null)))
+            "prompt_end" -> _events.trySend(Event.PromptEnd(data.optString("sessionId", null)))
+            "done" -> _events.trySend(Event.Done(data))
             "error" -> _events.trySend(Event.Error(data.optString("message", "Unknown error")))
             "status" -> _events.trySend(Event.Status(data))
-            "replay_start" -> _events.trySend(Event.ReplayStart)
-            "replay_end" -> _events.trySend(Event.ReplayEnd)
+            "replay_start" -> _events.trySend(Event.ReplayStart(data.optString("sessionId", null)))
+            "replay_end" -> _events.trySend(Event.ReplayEnd(data.optString("sessionId", null)))
             "permission_resolved" -> {
                 val rid = data.optString("requestId", "")
                 if (rid.isNotBlank()) _events.trySend(Event.PermissionResolved(rid))
             }
             "auto_approved", "stderr" -> { /* ignore */ }
+            "user_message" -> _events.trySend(Event.UserMessage(data))
             else -> { /* unknown message type */ }
         }
     }

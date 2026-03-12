@@ -180,13 +180,14 @@ function handleMsg(d) {
     case 'usage': renderUsage(d.usage); break;
     case 'permission': showPermission(d); break;
     case 'permission_resolved': dismissPermission(d.requestId); break;
-    case 'session_created': handleSessionCreated(d); break;
-    case 'session_switched': handleSessionSwitched(d); break;
-    case 'session_deleted': handleSessionDeleted(d); break;
-    case 'session_renamed': handleSessionRenamed(d); break;
-    case 'prompt_start': if (!S.replaying) setRunning(true); break;
-    case 'prompt_end': if (!S.replaying) setRunning(false); break;
+    case 'session_created': if (!S.replaying) handleSessionCreated(d); break;
+    case 'session_switched': if (!S.replaying) handleSessionSwitched(d); break;
+    case 'session_deleted': if (!S.replaying) handleSessionDeleted(d); break;
+    case 'session_renamed': if (!S.replaying) handleSessionRenamed(d); break;
+    case 'prompt_start': if (!S.replaying) setRunning(true, d.sessionId); break;
+    case 'prompt_end': if (!S.replaying) setRunning(false, d.sessionId); break;
     case 'done': handleDone(d); break;
+    case 'user_message': appendMsg(d.sessionId, `<div class="msg msg-user">${esc(d.text||'')}</div>`); break;
     case 'error': appendMsg(d.sessionId, `<div class="msg msg-error">${esc(d.message||'Error')}</div>`); break;
     case 'status': appendMsg(d.sessionId, `<div class="msg msg-status">${esc(d.message||'')}</div>`); break;
     case 'auto_approved': appendMsg(d.sessionId, `<div class="msg msg-auto-approved">${icon('check',14)} Auto-approved: ${esc(d.title||'')} (${esc(d.kind||'')})</div>`); break;
@@ -391,6 +392,11 @@ function showActiveChat() {
   document.querySelectorAll('.session-chat').forEach(el => {
     el.style.display = el.dataset.session === S.sid ? '' : 'none';
   });
+  // Update send/cancel buttons for the active session's running state
+  const activeRunning = runningSessions.has(S.sid);
+  S.running = activeRunning;
+  $('send-btn').hidden = activeRunning;
+  $('cancel-btn').hidden = !activeRunning;
   scrollDown();
 }
 function appendMsg(sid, html) {
@@ -404,11 +410,16 @@ function appendMsg(sid, html) {
 function addUserMsg(text, sid) {
   appendMsg(sid, `<div class="msg msg-user">${esc(text)}</div>`);
 }
-function setRunning(v) {
-  S.running = v;
-  $('send-btn').hidden = v;
-  $('cancel-btn').hidden = !v;
-  updateBadge(v ? 'running' : 'connected');
+const runningSessions = new Set();
+function setRunning(v, sid) {
+  sid = sid || S.sid;
+  if (v) runningSessions.add(sid); else runningSessions.delete(sid);
+  // Only show cancel/hide send for the ACTIVE session
+  const activeRunning = runningSessions.has(S.sid);
+  S.running = activeRunning;
+  $('send-btn').hidden = activeRunning;
+  $('cancel-btn').hidden = !activeRunning;
+  updateBadge(runningSessions.size > 0 ? 'running' : 'connected');
 }
 function updateBadge(status) {
   const b = $('status-badge');

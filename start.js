@@ -7,6 +7,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import * as acp from "@agentclientprotocol/sdk";
 import * as authMod from "./lib/auth.js";
 import * as store from "./lib/store.js";
@@ -15,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
 const COPILOT_PATH = process.env.COPILOT_PATH || "copilot";
 const COPILOT_ARGS = (process.env.COPILOT_ARGS || "").split(" ").filter(Boolean);
-const COPILOT_CWD = process.env.COPILOT_CWD || process.cwd();
+const COPILOT_CWD = process.env.COPILOT_CWD || os.homedir();
 const PERMISSION_TIMEOUT_MS = 180000;
 const WORKSPACE_IDLE_TIMEOUT_MS = Number(process.env.WORKSPACE_IDLE_TIMEOUT_MS || 1800000);
 const MAX_REPLAY = 500;
@@ -100,18 +101,23 @@ class Workspace {
     this.availableModels = []; this.currentModelId = ""; this.configOptions = [];
     this.alive = false; this.sockets = new Set();
     this.perms = new Map(); this.idleTimer = null;
-    this.msgBufs = new Map();
     this.restarts = 0; this.lastRestart = 0;
   }
-  send(msg) {
+  // Only persist content messages (not session management/control events)
+  static REPLAY_TYPES = new Set(["chunk","tool","tool_update","done","error","status","user_message","auto_approved","plan","usage"]);
+  send(msg, excludeSocket) {
     const sid = msg.sessionId || this.activeSessionId;
-    if (sid && msg.type !== "stderr") {
-      if (!this.msgBufs.has(sid)) this.msgBufs.set(sid, []);
-      const buf = this.msgBufs.get(sid);
-      buf.push(msg); if (buf.length > MAX_REPLAY) buf.shift();
+    if (sid && Workspace.REPLAY_TYPES.has(msg.type)) {
       store.appendMessage(sid, msg);
     }
-    for (const s of this.sockets) { try { s.emit("msg", msg); } catch {} }
+    for (const s of this.sockets) {
+      if (s === excludeSocket) continue;
+      try { s.emit("msg", msg); } catch {}
+    }
+  }
+  /** Load replay messages from disk for a session */
+  getReplay(sid) {
+    return store.loadMessages(sid).filter(m => Workspace.REPLAY_TYPES.has(m.type)).slice(-MAX_REPLAY);
   }
   attach(s) { this.sockets.add(s); if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; } }
   detach(s) { this.sockets.delete(s); if (this.sockets.size === 0) { this.cancelAllPerms(); this.startIdle(); } }
@@ -235,6 +241,51 @@ async function createWS(cwd) {
   return ws;
 }
 
+async function restoreWorkspace(savedId) {
+  const meta = store.loadWorkspace(savedId);
+  if (!meta?.sessions?.length) return null;
+  console.log(`  Restoring workspace ${savedId} (${meta.sessions.length} sessions)...`);
+  const ws = new Workspace(savedId);
+  ws.createdAt = meta.createdAt || Date.now();
+  ws.yoloLevel = meta.yoloLevel || 0;
+  ws.proc = buildProc(); setupProc(ws); await initACP(ws);
+
+  const idMap = new Map(); // oldSessionId -> newSessionId
+  for (const sMeta of meta.sessions) {
+    const cwd = sMeta.cwd || COPILOT_CWD;
+    try {
+      const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
+      idMap.set(sMeta.sessionId, sr.sessionId);
+      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true });
+      if (!ws.activeSessionId) {
+        ws.activeSessionId = sr.sessionId;
+        if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
+        if (sr.models) { ws.availableModels = sr.models.availableModels||[]; ws.currentModelId = sr.models.currentModelId||""; }
+        if (sr.configOptions) ws.configOptions = sr.configOptions;
+      }
+      // Set active to match the original
+      if (sMeta.active) ws.activeSessionId = sr.sessionId;
+    } catch (e) { console.error(`  Failed to recreate session: ${e}`); }
+  }
+
+  // Restore saved model
+  if (meta.currentModelId && ws.currentModelId !== meta.currentModelId) {
+    try { await ws.conn.unstable_setSessionModel({ sessionId: ws.activeSessionId, modelId: meta.currentModelId }); ws.currentModelId = meta.currentModelId; } catch {}
+  }
+
+  // Write history with new session IDs so getReplay() works
+  for (const [oldSid, newSid] of idMap) {
+    const messages = store.loadMessages(oldSid).filter(m => Workspace.REPLAY_TYPES.has(m.type));
+    if (!messages.length) continue;
+    for (const m of messages) m.sessionId = newSid;
+    for (const m of messages) store.appendMessage(newSid, m);
+  }
+
+  ws.alive = true; workspaces.set(savedId, ws); ws.saveMeta();
+  console.log(`  Workspace ${savedId} restored (${ws.sessions.size} sessions)`);
+  return ws;
+}
+
 function sendInit(ws, socket, isReconnect) {
   socket.emit("msg", {
     type: "init", workspaceId: ws.id, sessionId: ws.activeSessionId,
@@ -243,7 +294,9 @@ function sendInit(ws, socket, isReconnect) {
     configOptions: ws.configOptions, cwd: ws.sessions.get(ws.activeSessionId)?.cwd||COPILOT_CWD,
     sessions: ws.sessionList(), yoloLevels: YOLO, yoloLevel: ws.yoloLevel, isReconnect,
   });
-  if (isReconnect) for (const [sid, buf] of ws.msgBufs) {
+  if (isReconnect) for (const [sid] of ws.sessions) {
+    const buf = ws.getReplay(sid);
+    if (!buf.length) continue;
     socket.emit("msg", { type: "replay_start", sessionId: sid });
     for (const m of buf) socket.emit("msg", m);
     socket.emit("msg", { type: "replay_end", sessionId: sid });
@@ -265,9 +318,14 @@ io.on("connection", async (socket) => {
   let ws = null;
   socket.on("auto_connect", async d => {
     const id = d?.workspaceId;
-    // Try requested workspace first
+    // Try requested workspace in memory first
     if (id) { const t = workspaces.get(id); if (t?.alive) { ws = t; ws.attach(socket); sendInit(ws, socket, true); return; } }
-    // If no workspace specified (or it's dead), attach to any existing alive workspace
+    // Try to restore from disk
+    if (id && !workspaces.has(id)) {
+      try { const restored = await restoreWorkspace(id); if (restored) { ws = restored; ws.attach(socket); sendInit(ws, socket, true); return; } }
+      catch (e) { console.error("Restore failed:", e); }
+    }
+    // Attach to any existing alive workspace
     for (const [, t] of workspaces) { if (t.alive) { ws = t; ws.attach(socket); sendInit(ws, socket, true); return; } }
     // No workspace exists, create new
     try { ws = await createWS(d?.cwd||COPILOT_CWD); ws.attach(socket); sendInit(ws, socket, false); }
@@ -287,7 +345,9 @@ io.on("connection", async (socket) => {
     const sid = d?.sessionId||ws.activeSessionId, text = (d?.text||"").trim(), att = d?.attachments||[];
     if (!text && !att.length) return;
     const s = ws.sessions.get(sid); if (!s) return;
-    if (s.busy) { ws.send({type:"status",sessionId:sid,level:"warn",message:"Busy"}); return; }
+    if (s.busy) { socket.emit("msg",{type:"status",sessionId:sid,level:"warn",message:"Busy"}); return; }
+    // Record user message — exclude sender (they already show it locally)
+    ws.send({type:"user_message",sessionId:sid,text,hasAttachments:att.length>0}, socket);
     s.queue.push({ text, attachments: att });
     if (!s.titleSet && text) {
       s.title = text.replace(/^\/\w+\s*/, "").slice(0,50) || text.slice(0,50);
@@ -315,8 +375,18 @@ io.on("connection", async (socket) => {
     if(sr.models){ws.availableModels=sr.models.availableModels||ws.availableModels;ws.currentModelId=sr.models.currentModelId||ws.currentModelId;}
     ws.saveMeta(); ws.send({type:"session_created",sessionId:sr.sessionId,cwd,title,sessions:ws.sessionList(),modes:{availableModes:ws.availableModes,currentModeId:ws.currentModeId},models:{availableModels:ws.availableModels,currentModelId:ws.currentModelId},configOptions:ws.configOptions}); }catch(e){ws.send({type:"error",message:""+e});}
   });
-  socket.on("switch_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid))return; ws.activeSessionId=sid; const s=ws.sessions.get(sid); ws.send({type:"session_switched",sessionId:sid,cwd:s.cwd,title:s.title,sessions:ws.sessionList()}); });
-  socket.on("delete_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid)||ws.sessions.size<=1)return; ws.sessions.delete(sid);ws.msgBufs.delete(sid); if(ws.activeSessionId===sid)ws.activeSessionId=ws.sessions.keys().next().value; const s=ws.sessions.get(ws.activeSessionId); ws.saveMeta(); ws.send({type:"session_deleted",deletedSessionId:sid,sessionId:ws.activeSessionId,cwd:s?.cwd,sessions:ws.sessionList()}); });
+  socket.on("switch_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid))return; const s=ws.sessions.get(sid);
+    // Per-client switch: only notify the requesting socket (not broadcast)
+    socket.emit("msg", {type:"session_switched",sessionId:sid,cwd:s.cwd,title:s.title,sessions:ws.sessionList()});
+    // Replay this session's history to the requesting client only
+    const buf = ws.getReplay(sid);
+    if (buf.length) {
+      socket.emit("msg", { type: "replay_start", sessionId: sid });
+      for (const m of buf) socket.emit("msg", m);
+      socket.emit("msg", { type: "replay_end", sessionId: sid });
+    }
+  });
+  socket.on("delete_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid)||ws.sessions.size<=1)return; ws.sessions.delete(sid); store.deleteSessionHistory(sid); if(ws.activeSessionId===sid)ws.activeSessionId=ws.sessions.keys().next().value; const s=ws.sessions.get(ws.activeSessionId); ws.saveMeta(); ws.send({type:"session_deleted",deletedSessionId:sid,sessionId:ws.activeSessionId,cwd:s?.cwd,sessions:ws.sessionList()}); });
   socket.on("rename_session", d => { if(!ws)return; const sid=d?.sessionId||ws.activeSessionId,title=d?.title?.trim(); if(!title||!ws.sessions.has(sid))return; ws.sessions.get(sid).title=title; ws.sessions.get(sid).titleSet=true; ws.saveMeta(); ws.send({type:"session_renamed",sessionId:sid,title,sessions:ws.sessionList()}); });
   socket.on("set_yolo", d => { if(!ws)return; const lv=Number(d?.level); if(lv>=0&&lv<=3){ws.yoloLevel=lv;ws.send({type:"yolo_update",level:lv});} });
   socket.on("browse_dir", (d, cb) => { const r=store.listDirectory(d?.path||COPILOT_CWD); if(typeof cb==="function")cb(r); else socket.emit("msg",{type:"dir_listing",...r}); });
@@ -329,8 +399,6 @@ async function drain(ws, sid) {
   if (!s||s.busy||!s.queue.length) return;
   s.busy = true; ws.send({type:"prompt_start",sessionId:sid});
   const { text, attachments } = s.queue.shift();
-  // Store user prompt in replay buffer so it survives reload
-  if (text) ws.send({type:"chunk",sessionId:sid,role:"user",text});
   try {
     const prompt = [];
     if (text) prompt.push({ type: "text", text });

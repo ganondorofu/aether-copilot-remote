@@ -40,9 +40,19 @@ class CopilotViewModel : ViewModel() {
     private val _authState = MutableStateFlow(AuthState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    // ── Chat ──
+    // ── Chat — per-session storage ──
+    private val sessionChats = mutableMapOf<String, MutableList<ChatItem>>()
     private val _chatItems = MutableStateFlow<List<ChatItem>>(emptyList())
     val chatItems: StateFlow<List<ChatItem>> = _chatItems.asStateFlow()
+
+    private fun currentSessionId(): String? = _connection.value.sessionId
+    private fun getSessionChat(sid: String?): MutableList<ChatItem> {
+        if (sid == null) return mutableListOf()
+        return sessionChats.getOrPut(sid) { mutableListOf() }
+    }
+    private fun publishChat() {
+        _chatItems.value = getSessionChat(currentSessionId()).toList()
+    }
 
     // ── Session state ──
     private val _modes = MutableStateFlow<List<ModeInfo>>(emptyList())
@@ -66,8 +76,11 @@ class CopilotViewModel : ViewModel() {
     private val _permissions = MutableStateFlow<List<ActivePermission>>(emptyList())
     val permissions: StateFlow<List<ActivePermission>> = _permissions.asStateFlow()
 
+    // Per-session running state
+    private val runningSessions = mutableSetOf<String>()
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
+    private fun updateRunning() { _running.value = runningSessions.contains(currentSessionId()) }
 
     private val _yoloLevel = MutableStateFlow(0)
     val yoloLevel: StateFlow<Int> = _yoloLevel.asStateFlow()
@@ -81,7 +94,15 @@ class CopilotViewModel : ViewModel() {
     private var agentBuffer = StringBuilder()
     private var thoughtBuffer = StringBuilder()
     private var userBuffer = StringBuilder()
+    private var bufferTargetSid: String? = null
     private var replaying = false
+    private var replaySessionId: String? = null
+
+    /** Determine which session a message should be routed to */
+    private fun resolveTargetSid(data: org.json.JSONObject?): String? {
+        val msgSid = data?.optString("sessionId", "")?.takeIf { it.isNotBlank() }
+        return msgSid ?: replaySessionId ?: currentSessionId()
+    }
 
     // ── Auth methods ──
     fun checkAuthStatus(serverUrl: String, token: String?) {
@@ -189,7 +210,14 @@ class CopilotViewModel : ViewModel() {
                 httpClient.newCall(request).execute().close()
             } catch (_: Exception) {}
         }
-        disconnect()
+        client.disconnect()
+        // Full reset on logout
+        _connection.value = ConnectionState()
+        sessionChats.clear()
+        _chatItems.value = emptyList()
+        _permissions.value = emptyList()
+        runningSessions.clear()
+        _running.value = false
         _authState.value = AuthState(status = "login")
     }
 
@@ -200,7 +228,8 @@ class CopilotViewModel : ViewModel() {
     // ── Connection methods ──
     fun connect(serverUrl: String, authToken: String?, cwd: String? = null, workspaceId: String? = null) {
         _serverUrl.value = serverUrl
-        _connection.value = ConnectionState()
+        // Keep workspaceId during reconnect — only reset session state
+        _connection.update { it.copy(connected = false, sessionId = null, sessions = emptyList()) }
         client.connect(serverUrl, authToken, cwd, workspaceId)
 
         viewModelScope.launch {
@@ -211,18 +240,26 @@ class CopilotViewModel : ViewModel() {
                     }
                     is CopilotWebSocket.Event.Disconnected -> {
                         _connection.update { it.copy(connected = false) }
-                        _running.value = false
+                        runningSessions.clear()
+                        updateRunning()
                     }
                     is CopilotWebSocket.Event.Init -> handleInit(event.data)
                     is CopilotWebSocket.Event.ReplayStart -> {
                         replaying = true
-                        _chatItems.value = emptyList()
+                        replaySessionId = event.sessionId ?: currentSessionId()
+                        // Clear only the target session's chat for replay
+                        val sid = replaySessionId
+                        if (sid != null) sessionChats[sid] = mutableListOf()
+                        if (sid == currentSessionId()) publishChat()
                         _permissions.value = emptyList()
                         flushBuffers()
                     }
                     is CopilotWebSocket.Event.ReplayEnd -> {
                         flushBuffers()
+                        val wasCurrent = replaySessionId == currentSessionId()
                         replaying = false
+                        replaySessionId = null
+                        if (wasCurrent) publishChat()
                     }
                     is CopilotWebSocket.Event.Chunk -> handleChunk(event.data)
                     is CopilotWebSocket.Event.Tool -> handleTool(event.data)
@@ -230,6 +267,11 @@ class CopilotViewModel : ViewModel() {
                     is CopilotWebSocket.Event.Permission -> if (!replaying) handlePermission(event.data)
                     is CopilotWebSocket.Event.SessionCreated -> handleSessionCreated(event.data)
                     is CopilotWebSocket.Event.SessionSwitched -> handleSessionSwitched(event.data)
+                    is CopilotWebSocket.Event.UserMessage -> {
+                        val text = event.data.optString("text", "")
+                        val sid = resolveTargetSid(event.data)
+                        if (text.isNotBlank() && sid != null) addChatItem(ChatItem.UserMessage(text), sid)
+                    }
                     is CopilotWebSocket.Event.SessionDeleted -> handleSessionDeleted(event.data)
                     is CopilotWebSocket.Event.SessionRenamed -> handleSessionRenamed(event.data)
                     is CopilotWebSocket.Event.Usage -> handleUsage(event.data)
@@ -237,19 +279,37 @@ class CopilotViewModel : ViewModel() {
                     is CopilotWebSocket.Event.ModeUpdate -> handleModeUpdate(event.data)
                     is CopilotWebSocket.Event.ModelUpdate -> handleModelUpdate(event.data)
                     is CopilotWebSocket.Event.ConfigUpdate -> handleConfigUpdate(event.data)
-                    is CopilotWebSocket.Event.PromptStart -> if (!replaying) _running.value = true
+                    is CopilotWebSocket.Event.PromptStart -> {
+                        if (!replaying) {
+                            val sid = event.sessionId ?: currentSessionId()
+                            if (sid != null) runningSessions.add(sid)
+                            updateRunning()
+                        }
+                    }
                     is CopilotWebSocket.Event.PromptEnd -> {
                         flushBuffers()
-                        if (!replaying) _running.value = false
+                        if (!replaying) {
+                            val sid = event.sessionId ?: currentSessionId()
+                            if (sid != null) runningSessions.remove(sid)
+                            updateRunning()
+                        }
+                    }
+                    is CopilotWebSocket.Event.Done -> {
+                        flushBuffers()
+                        val stopReason = event.data.optString("stopReason", "completed")
+                        val sid = resolveTargetSid(event.data)
+                        if (sid != null) addChatItem(ChatItem.Done(stopReason), sid)
                     }
                     is CopilotWebSocket.Event.Error -> {
-                        if (!replaying) addChatItem(ChatItem.Error(event.message))
+                        val sid = resolveTargetSid(null)
+                        if (!replaying && sid != null) addChatItem(ChatItem.Error(event.message), sid)
                     }
                     is CopilotWebSocket.Event.Status -> {
                         val msg = event.data.optString("message", "")
                         val level = event.data.optString("level", "info")
-                        if (msg.isNotBlank() && level != "debug" && !replaying) {
-                            addChatItem(ChatItem.Status(msg))
+                        val sid = resolveTargetSid(event.data)
+                        if (msg.isNotBlank() && level != "debug" && !replaying && sid != null) {
+                            addChatItem(ChatItem.Status(msg), sid)
                         }
                     }
                     is CopilotWebSocket.Event.AuthRequired -> {
@@ -266,11 +326,13 @@ class CopilotViewModel : ViewModel() {
 
     fun disconnect() {
         client.disconnect()
-        _connection.value = ConnectionState()
+        // Preserve workspaceId so we can reconnect to the same workspace
+        _connection.update { it.copy(connected = false, sessionId = null, sessions = emptyList()) }
     }
 
     fun sendPrompt(text: String) {
-        if (text.isBlank() || _running.value) return
+        val sid = currentSessionId()
+        if (text.isBlank() || (sid != null && runningSessions.contains(sid))) return
         flushBuffers()
         addChatItem(ChatItem.UserMessage(text))
         client.sendPrompt(text)
@@ -302,10 +364,10 @@ class CopilotViewModel : ViewModel() {
     }
 
     fun switchSession(sessionId: String) {
-        _chatItems.value = emptyList()
-        _permissions.value = emptyList()
-        _running.value = false
+        // Save current buffers before switching
         flushBuffers()
+        _permissions.value = emptyList()
+        // Don't clear chat — switchSession will trigger session_switched + replay
         client.switchSession(sessionId)
     }
 
@@ -408,34 +470,42 @@ class CopilotViewModel : ViewModel() {
     private fun handleChunk(data: org.json.JSONObject) {
         val role = data.optString("role", "")
         val text = data.optString("text", "")
+        val targetSid = resolveTargetSid(data) ?: return
+        
+        // If buffers target a different session, flush first
+        if (bufferTargetSid != null && bufferTargetSid != targetSid) {
+            flushBuffers()
+        }
+        bufferTargetSid = targetSid
         
         when (role) {
             "agent" -> {
                 flushThought()
                 flushUser()
                 agentBuffer.append(text)
-                updateLastAgent()
+                updateLastAgent(targetSid)
             }
             "thought" -> {
                 flushUser()
                 thoughtBuffer.append(text)
-                updateLastThought()
+                updateLastThought(targetSid)
             }
             "user" -> {
                 userBuffer.append(text)
-                updateLastUser()
+                updateLastUser(targetSid)
             }
         }
     }
 
     private fun handleTool(data: org.json.JSONObject) {
         flushBuffers()
+        val targetSid = resolveTargetSid(data) ?: return
         val toolCallId = data.optString("toolCallId", "")
         val title = data.optString("title", "")
         val kind = data.optString("kind", "other")
         val status = data.optString("status", "pending")
         
-        updateOrAddToolCall(toolCallId) {
+        updateOrAddToolCall(toolCallId, targetSid) {
             ChatItem.ToolCall(
                 toolCallId = toolCallId,
                 title = title,
@@ -446,6 +516,7 @@ class CopilotViewModel : ViewModel() {
     }
 
     private fun handleToolUpdate(data: org.json.JSONObject) {
+        val targetSid = resolveTargetSid(data) ?: return
         val toolCallId = data.optString("toolCallId", "")
         val title = data.optString("title", "")
         val status = data.optString("status", "")
@@ -457,7 +528,7 @@ class CopilotViewModel : ViewModel() {
             }
         } else ""
         
-        updateOrAddToolCall(toolCallId) { existing ->
+        updateOrAddToolCall(toolCallId, targetSid) { existing ->
             ChatItem.ToolCall(
                 toolCallId = toolCallId,
                 title = if (title.isNotBlank()) title else existing?.title ?: "",
@@ -497,7 +568,13 @@ class CopilotViewModel : ViewModel() {
     private fun handleSessionCreated(data: org.json.JSONObject) {
         val sessionId = data.optString("sessionId")
         val title = data.optString("title")
+        flushBuffers()
+        _permissions.value = emptyList()
         _connection.update { it.copy(sessionId = sessionId) }
+        // New session starts with empty chat
+        sessionChats[sessionId] = mutableListOf()
+        publishChat()
+        updateRunning()
         addChatItem(ChatItem.Status("Session created: $title"))
         
         // Update sessions list
@@ -506,9 +583,12 @@ class CopilotViewModel : ViewModel() {
 
     private fun handleSessionSwitched(data: org.json.JSONObject) {
         val sessionId = data.optString("sessionId")
-        val title = data.optString("title")
+        _permissions.value = emptyList()
+        flushBuffers()
         _connection.update { it.copy(sessionId = sessionId) }
-        addChatItem(ChatItem.Status("Switched to: $title"))
+        // Publish the stored chat for the new session (replay will repopulate)
+        publishChat()
+        updateRunning()
         
         // Update sessions list
         parseSessions(data)
@@ -517,7 +597,11 @@ class CopilotViewModel : ViewModel() {
     private fun handleSessionDeleted(data: org.json.JSONObject) {
         val deletedId = data.optString("deletedSessionId")
         val sessionId = data.optString("sessionId")
+        sessionChats.remove(deletedId)
+        runningSessions.remove(deletedId)
         _connection.update { it.copy(sessionId = sessionId) }
+        publishChat()
+        updateRunning()
         addChatItem(ChatItem.Status("Session deleted"))
         
         // Update sessions list
@@ -592,50 +676,64 @@ class CopilotViewModel : ViewModel() {
     }
 
     // ── UI helpers ──
-    private fun addChatItem(item: ChatItem) {
-        _chatItems.update { it + item }
+    private fun addChatItem(item: ChatItem, sid: String? = null) {
+        val targetSid = sid ?: currentSessionId() ?: return
+        getSessionChat(targetSid).add(item)
+        if (targetSid == currentSessionId()) publishChat()
     }
 
-    private fun updateLastAgent() {
+    private fun updateLastAgent(sid: String? = null) {
         val text = agentBuffer.toString()
-        _chatItems.update { items ->
-            val last = items.lastOrNull()
-            if (last is ChatItem.AgentMessage) {
-                items.toMutableList().apply { set(lastIndex, last.copy(text = text)) }
-            } else items + ChatItem.AgentMessage(text)
+        val targetSid = sid ?: bufferTargetSid ?: currentSessionId() ?: return
+        val chat = getSessionChat(targetSid)
+        val last = chat.lastOrNull()
+        if (last is ChatItem.AgentMessage) {
+            chat[chat.lastIndex] = last.copy(text = text)
+        } else {
+            chat.add(ChatItem.AgentMessage(text))
         }
+        if (targetSid == currentSessionId()) publishChat()
     }
 
-    private fun updateLastThought() {
+    private fun updateLastThought(sid: String? = null) {
         val text = thoughtBuffer.toString()
-        _chatItems.update { items ->
-            val last = items.lastOrNull()
-            if (last is ChatItem.ThoughtMessage) {
-                items.toMutableList().apply { set(lastIndex, last.copy(text = text)) }
-            } else items + ChatItem.ThoughtMessage(text)
+        val targetSid = sid ?: bufferTargetSid ?: currentSessionId() ?: return
+        val chat = getSessionChat(targetSid)
+        val last = chat.lastOrNull()
+        if (last is ChatItem.ThoughtMessage) {
+            chat[chat.lastIndex] = last.copy(text = text)
+        } else {
+            chat.add(ChatItem.ThoughtMessage(text))
         }
+        if (targetSid == currentSessionId()) publishChat()
     }
 
-    private fun updateLastUser() {
+    private fun updateLastUser(sid: String? = null) {
         val text = userBuffer.toString()
-        _chatItems.update { items ->
-            val last = items.lastOrNull()
-            if (last is ChatItem.UserMessage) {
-                items.toMutableList().apply { set(lastIndex, last.copy(text = text)) }
-            } else items + ChatItem.UserMessage(text)
+        val targetSid = sid ?: bufferTargetSid ?: currentSessionId() ?: return
+        val chat = getSessionChat(targetSid)
+        val last = chat.lastOrNull()
+        if (last is ChatItem.UserMessage) {
+            chat[chat.lastIndex] = last.copy(text = text)
+        } else {
+            chat.add(ChatItem.UserMessage(text))
         }
+        if (targetSid == currentSessionId()) publishChat()
     }
 
-    private fun updateOrAddToolCall(id: String, update: (ChatItem.ToolCall?) -> ChatItem.ToolCall) {
-        _chatItems.update { items ->
-            val idx = items.indexOfLast { it is ChatItem.ToolCall && it.toolCallId == id }
-            if (idx >= 0) {
-                items.toMutableList().apply { set(idx, update(items[idx] as ChatItem.ToolCall)) }
-            } else items + update(null)
+    private fun updateOrAddToolCall(id: String, sid: String? = null, update: (ChatItem.ToolCall?) -> ChatItem.ToolCall) {
+        val targetSid = sid ?: currentSessionId() ?: return
+        val chat = getSessionChat(targetSid)
+        val idx = chat.indexOfLast { it is ChatItem.ToolCall && it.toolCallId == id }
+        if (idx >= 0) {
+            chat[idx] = update(chat[idx] as ChatItem.ToolCall)
+        } else {
+            chat.add(update(null))
         }
+        if (targetSid == currentSessionId()) publishChat()
     }
 
-    private fun flushBuffers() { flushAgent(); flushThought(); flushUser() }
+    private fun flushBuffers() { flushAgent(); flushThought(); flushUser(); bufferTargetSid = null }
     private fun flushAgent() { if (agentBuffer.isNotEmpty()) agentBuffer.clear() }
     private fun flushThought() { if (thoughtBuffer.isNotEmpty()) thoughtBuffer.clear() }
     private fun flushUser() { if (userBuffer.isNotEmpty()) userBuffer.clear() }

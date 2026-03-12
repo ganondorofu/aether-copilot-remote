@@ -55,11 +55,13 @@ fun CopilotScreen(
     val yoloLevel by vm.yoloLevel.collectAsState()
     val usage by vm.usage.collectAsState()
 
-    // Stored preferences
-    val storedServerUrl = preferencesRepository?.relayUrl?.collectAsState(initial = "http://10.0.2.2:8787")
-    val storedAuthToken = preferencesRepository?.authToken?.collectAsState(initial = null)
-    val storedWorkspaceId = preferencesRepository?.workspaceId?.collectAsState(initial = null)
+    // Stored preferences — use bundled flow to avoid race conditions
+    val savedCreds = preferencesRepository?.savedCredentials?.collectAsState(initial = null)
     val appLockEnabled = preferencesRepository?.appLockEnabled?.collectAsState(initial = false)
+
+    // Track if preferences have loaded
+    var prefsLoaded by remember { mutableStateOf(false) }
+    var initialAuthDone by remember { mutableStateOf(false) }
 
     var promptText by remember { mutableStateOf("") }
     var showModelSheet by remember { mutableStateOf(false) }
@@ -72,15 +74,19 @@ fun CopilotScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Check auth status on launch (only if token is already saved)
-    LaunchedEffect(Unit) {
-        val token = storedAuthToken?.value
-        if (token != null) {
-            val url = storedServerUrl?.value ?: "http://10.0.2.2:8787"
-            vm.checkAuthStatus(url, token)
+    // Check auth status ONCE when all preferences have loaded
+    LaunchedEffect(savedCreds?.value) {
+        if (initialAuthDone) return@LaunchedEffect // Already checked, don't loop
+        val creds = savedCreds?.value ?: return@LaunchedEffect // DataStore not loaded yet
+        prefsLoaded = true
+        initialAuthDone = true
+        val lockEnabled = appLockEnabled?.value ?: false
+        if (creds.authToken != null && !lockEnabled) {
+            // Have a saved token and lock is off — auto-authenticate
+            vm.checkAuthStatus(creds.serverUrl, creds.authToken)
         } else {
-            // No saved token - show login screen directly
-            vm.setAuthLogin()
+            // No saved token OR app lock enabled — show login screen
+            vm.checkAuthStatus(creds.serverUrl, null)
         }
     }
 
@@ -91,24 +97,30 @@ fun CopilotScreen(
         }
     }
 
-    // Persist workspaceId when it changes
+    // Persist workspaceId when it changes (only save non-null values)
     LaunchedEffect(connection.workspaceId) {
         if (connection.workspaceId != null) {
             preferencesRepository?.saveWorkspaceId(connection.workspaceId)
         }
     }
 
+    // Derive stored values from the bundled credentials
+    val storedUrl = savedCreds?.value?.serverUrl ?: "http://10.0.2.2:8787"
+    val storedToken = savedCreds?.value?.authToken
+    val storedWorkspaceId = savedCreds?.value?.workspaceId
+    val storedUsername = savedCreds?.value?.username
+
     // Show auth screens if needed
-    when (authState.status) {
-        "checking" -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            return
+    if (!prefsLoaded || authState.status == "checking") {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+        return
+    }
+    when (authState.status) {
         "setup" -> {
             SetupScreen(
-                serverUrl = storedServerUrl?.value ?: "http://10.0.2.2:8787",
+                serverUrl = storedUrl,
                 error = authState.error,
                 onSetup = { url, username, password ->
                     vm.setup(url, username, password) { token, uname ->
@@ -116,8 +128,7 @@ fun CopilotScreen(
                             preferencesRepository?.setRelayUrl(url)
                             preferencesRepository?.saveAuthToken(token)
                             preferencesRepository?.saveUsername(uname)
-                            val workspaceId = storedWorkspaceId?.value
-                            vm.connect(url, token, null, workspaceId)
+                            vm.connect(url, token, null, storedWorkspaceId)
                         }
                     }
                 },
@@ -126,7 +137,8 @@ fun CopilotScreen(
         }
         "login" -> {
             LoginScreen(
-                serverUrl = storedServerUrl?.value ?: "",
+                serverUrl = storedUrl,
+                storedUsername = storedUsername,
                 error = authState.error,
                 onLogin = { url, username, password ->
                     vm.login(url, username, password) { token, uname ->
@@ -134,8 +146,7 @@ fun CopilotScreen(
                             preferencesRepository?.setRelayUrl(url)
                             preferencesRepository?.saveAuthToken(token)
                             preferencesRepository?.saveUsername(uname)
-                            val workspaceId = storedWorkspaceId?.value
-                            vm.connect(url, token, null, workspaceId)
+                            vm.connect(url, token, null, storedWorkspaceId)
                         }
                     }
                 },
@@ -150,16 +161,14 @@ fun CopilotScreen(
             // Connect if not connected yet
             if (!connection.connected && connection.sessionId == null) {
                 LaunchedEffect(Unit) {
-                    val url = storedServerUrl?.value ?: "http://10.0.2.2:8787"
-                    val token = storedAuthToken?.value
-                    val workspaceId = storedWorkspaceId?.value
-                    vm.connect(url, token, null, workspaceId)
+                    vm.connect(storedUrl, storedToken, null, storedWorkspaceId)
                 }
             }
         }
         "error" -> {
             LoginScreen(
-                serverUrl = storedServerUrl?.value ?: "",
+                serverUrl = storedUrl,
+                storedUsername = storedUsername,
                 error = authState.error,
                 onLogin = { url, username, password ->
                     vm.login(url, username, password) { token, uname ->
@@ -167,8 +176,7 @@ fun CopilotScreen(
                             preferencesRepository?.setRelayUrl(url)
                             preferencesRepository?.saveAuthToken(token)
                             preferencesRepository?.saveUsername(uname)
-                            val workspaceId = storedWorkspaceId?.value
-                            vm.connect(url, token, null, workspaceId)
+                            vm.connect(url, token, null, storedWorkspaceId)
                         }
                     }
                 },
@@ -267,7 +275,7 @@ fun CopilotScreen(
             // App Lock toggle
             ListItem(
                 headlineContent = { Text("App Lock") },
-                supportingContent = { Text("Require biometrics or passcode to open app", fontSize = 12.sp) },
+                supportingContent = { Text("Require login each time app starts", fontSize = 12.sp) },
                 trailingContent = {
                     Switch(
                         checked = appLockEnabled?.value ?: false,
@@ -392,8 +400,8 @@ fun CopilotScreen(
                 onClick = {
                     showSettingsSheet = false
                     scope.launch {
-                        val url = storedServerUrl?.value ?: ""
-                        val token = storedAuthToken?.value ?: ""
+                        val url = storedUrl
+                        val token = storedToken ?: ""
                         preferencesRepository?.saveAuthToken(null)
                         preferencesRepository?.saveWorkspaceId(null)
                         preferencesRepository?.saveUsername(null)
@@ -1315,16 +1323,25 @@ fun SetupScreen(
 @Composable
 fun LoginScreen(
     serverUrl: String,
+    storedUsername: String? = null,
     error: String?,
     onLogin: (url: String, username: String, password: String) -> Unit,
     onCheckServer: ((String) -> Unit)? = null,
 ) {
     var url by remember { mutableStateOf(serverUrl) }
-    var username by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(storedUsername ?: "") }
     var password by remember { mutableStateOf("") }
     var testResult by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // Update fields when stored values arrive (DataStore loads after initial compose)
+    LaunchedEffect(serverUrl) {
+        if (serverUrl.isNotBlank()) url = serverUrl
+    }
+    LaunchedEffect(storedUsername) {
+        if (!storedUsername.isNullOrBlank() && username.isBlank()) username = storedUsername
+    }
     
     Column(
         modifier = Modifier
