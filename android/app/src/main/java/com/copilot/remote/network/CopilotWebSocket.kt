@@ -58,7 +58,7 @@ class CopilotWebSocket(
         val busy: Boolean,
     )
 
-    private val _events = Channel<Event>(Channel.BUFFERED)
+    private val _events = Channel<Event>(Channel.UNLIMITED)
     val events: Flow<Event> = _events.receiveAsFlow()
 
     fun connect(serverUrl: String, authToken: String?, cwd: String? = null, savedWorkspaceId: String? = null) {

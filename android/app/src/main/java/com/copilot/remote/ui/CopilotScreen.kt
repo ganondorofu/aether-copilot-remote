@@ -90,10 +90,23 @@ fun CopilotScreen(
         }
     }
 
-    // Auto-scroll to bottom
+    // Smart auto-scroll: instant jump during replay, animated for live messages,
+    // skip if user has scrolled up to read history
+    val prevChatSize = remember { mutableIntStateOf(0) }
     LaunchedEffect(chatItems.size) {
-        if (chatItems.isNotEmpty()) {
-            listState.animateScrollToItem(chatItems.size - 1)
+        if (chatItems.isEmpty()) { prevChatSize.intValue = 0; return@LaunchedEffect }
+        val sizeJump = chatItems.size - prevChatSize.intValue
+        prevChatSize.intValue = chatItems.size
+        // Check if user is near the bottom (within last 3 items)
+        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        val nearBottom = lastVisible >= chatItems.size - 4 || sizeJump > 10
+        if (nearBottom) {
+            if (sizeJump > 10) {
+                // Large batch (replay) — instant scroll, no animation
+                listState.scrollToItem(chatItems.size - 1)
+            } else {
+                listState.animateScrollToItem(chatItems.size - 1)
+            }
         }
     }
 

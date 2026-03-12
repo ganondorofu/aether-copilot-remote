@@ -669,7 +669,7 @@ class CopilotViewModel : ViewModel() {
     private fun addChatItem(item: ChatItem, sid: String? = null) {
         val targetSid = sid ?: currentSessionId() ?: return
         getSessionChat(targetSid).add(item)
-        if (targetSid == currentSessionId()) publishChat()
+        if (!replaying && targetSid == currentSessionId()) publishChat()
     }
 
     private fun updateLastAgent(sid: String? = null) {
@@ -682,7 +682,7 @@ class CopilotViewModel : ViewModel() {
         } else {
             chat.add(ChatItem.AgentMessage(text))
         }
-        if (targetSid == currentSessionId()) publishChat()
+        if (!replaying && targetSid == currentSessionId()) publishChat()
     }
 
     private fun updateLastThought(sid: String? = null) {
@@ -695,7 +695,7 @@ class CopilotViewModel : ViewModel() {
         } else {
             chat.add(ChatItem.ThoughtMessage(text))
         }
-        if (targetSid == currentSessionId()) publishChat()
+        if (!replaying && targetSid == currentSessionId()) publishChat()
     }
 
     private fun updateLastUser(sid: String? = null) {
@@ -708,7 +708,7 @@ class CopilotViewModel : ViewModel() {
         } else {
             chat.add(ChatItem.UserMessage(text))
         }
-        if (targetSid == currentSessionId()) publishChat()
+        if (!replaying && targetSid == currentSessionId()) publishChat()
     }
 
     private fun updateOrAddToolCall(id: String, sid: String? = null, update: (ChatItem.ToolCall?) -> ChatItem.ToolCall) {
@@ -720,7 +720,7 @@ class CopilotViewModel : ViewModel() {
         } else {
             chat.add(update(null))
         }
-        if (targetSid == currentSessionId()) publishChat()
+        if (!replaying && targetSid == currentSessionId()) publishChat()
     }
 
     private fun flushBuffers() { flushAgent(); flushThought(); flushUser(); bufferTargetSid = null }
