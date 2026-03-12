@@ -90,23 +90,22 @@ fun CopilotScreen(
         }
     }
 
-    // Smart auto-scroll: instant jump during replay, animated for live messages,
-    // skip if user has scrolled up to read history
-    val prevChatSize = remember { mutableIntStateOf(0) }
-    LaunchedEffect(chatItems.size) {
-        if (chatItems.isEmpty()) { prevChatSize.intValue = 0; return@LaunchedEffect }
-        val sizeJump = chatItems.size - prevChatSize.intValue
-        prevChatSize.intValue = chatItems.size
-        // Check if user is near the bottom (within last 3 items)
-        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-        val nearBottom = lastVisible >= chatItems.size - 4 || sizeJump > 10
-        if (nearBottom) {
-            if (sizeJump > 10) {
-                // Large batch (replay) — instant scroll, no animation
-                listState.scrollToItem(chatItems.size - 1)
-            } else {
-                listState.animateScrollToItem(chatItems.size - 1)
+    // Smart auto-scroll: only scroll to bottom if user is already near the bottom.
+    // Never fight the user when they've scrolled up to read history.
+    val isAtBottom = remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            if (info.totalItemsCount == 0) true
+            else {
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisible >= info.totalItemsCount - 3
             }
+        }
+    }
+    LaunchedEffect(chatItems.size) {
+        if (chatItems.isEmpty()) return@LaunchedEffect
+        if (isAtBottom.value) {
+            listState.scrollToItem(chatItems.size - 1)
         }
     }
 
@@ -645,13 +644,7 @@ fun CopilotScreen(
                         onValueChange = { promptText = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("メッセージを入力…", fontSize = 14.sp) },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = {
-                            if (promptText.isNotBlank() && !running) {
-                                vm.sendPrompt(promptText)
-                                promptText = ""
-                            }
-                        }),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                         maxLines = 4,
                         shape = RoundedCornerShape(20.dp),
                         colors = OutlinedTextFieldDefaults.colors(
