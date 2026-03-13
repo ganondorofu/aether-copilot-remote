@@ -46,13 +46,34 @@ class CopilotViewModel : ViewModel() {
     private val _chatItems = MutableStateFlow<List<ChatItem>>(emptyList())
     val chatItems: StateFlow<List<ChatItem>> = _chatItems.asStateFlow()
 
+    // Cache: sessions that have completed at least one replay
+    private val cachedSessions = mutableSetOf<String>()
+    // Pagination: how many items to show per session (from the end)
+    private val displayLimits = mutableMapOf<String, Int>()
+    private val INITIAL_DISPLAY_LIMIT = 50
+    private val LOAD_MORE_COUNT = 30
+    private val _hasMoreMessages = MutableStateFlow(false)
+    val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages.asStateFlow()
+
     private fun currentSessionId(): String? = _connection.value.sessionId
     private fun getSessionChat(sid: String?): MutableList<ChatItem> {
         if (sid == null) return mutableListOf()
         return sessionChats.getOrPut(sid) { mutableListOf() }
     }
     private fun publishChat() {
-        _chatItems.value = getSessionChat(currentSessionId()).toList()
+        val sid = currentSessionId() ?: return
+        val all = getSessionChat(sid)
+        val limit = displayLimits.getOrPut(sid) { INITIAL_DISPLAY_LIMIT }
+        _chatItems.value = if (all.size > limit) all.takeLast(limit) else all.toList()
+        _hasMoreMessages.value = all.size > limit
+    }
+    fun loadMoreMessages() {
+        val sid = currentSessionId() ?: return
+        val chat = getSessionChat(sid)
+        val current = displayLimits.getOrPut(sid) { INITIAL_DISPLAY_LIMIT }
+        if (current >= chat.size) return
+        displayLimits[sid] = (current + LOAD_MORE_COUNT).coerceAtMost(chat.size)
+        publishChat()
     }
 
     // ── Session state ──
@@ -354,6 +375,7 @@ class CopilotViewModel : ViewModel() {
                     is CopilotWebSocket.Event.Disconnected -> {
                         _connection.update { it.copy(connected = false) }
                         runningSessions.clear()
+                        cachedSessions.clear()
                         updateRunning()
                     }
                     is CopilotWebSocket.Event.Init -> handleInit(event.data)
@@ -369,10 +391,12 @@ class CopilotViewModel : ViewModel() {
                     }
                     is CopilotWebSocket.Event.ReplayEnd -> {
                         flushBuffers()
+                        val sid = replaySessionId
                         val wasCurrent = replaySessionId == currentSessionId()
                         replaying = false
                         replaySessionId = null
                         if (wasCurrent) publishChat()
+                        if (sid != null) cachedSessions.add(sid)
                     }
                     is CopilotWebSocket.Event.Chunk -> handleChunk(event.data)
                     is CopilotWebSocket.Event.Tool -> handleTool(event.data)
@@ -491,8 +515,8 @@ class CopilotViewModel : ViewModel() {
         // Save current buffers before switching
         flushBuffers()
         _permissions.value = emptyList()
-        // Don't clear chat — switchSession will trigger session_switched + replay
-        client.switchSession(sessionId)
+        val isCached = sessionId in cachedSessions
+        client.switchSession(sessionId, skipReplay = isCached)
     }
 
     fun deleteSession(sessionId: String) {
@@ -710,7 +734,9 @@ class CopilotViewModel : ViewModel() {
         _permissions.value = emptyList()
         flushBuffers()
         _connection.update { it.copy(sessionId = sessionId) }
-        // Publish the stored chat for the new session (replay will repopulate)
+        // Reset display limit for fresh view of this session
+        displayLimits[sessionId] = INITIAL_DISPLAY_LIMIT
+        // Publish the stored chat for the new session (replay will repopulate if not cached)
         publishChat()
         updateRunning()
         
@@ -725,6 +751,8 @@ class CopilotViewModel : ViewModel() {
         val sessionId = data.optString("sessionId")
         sessionChats.remove(deletedId)
         runningSessions.remove(deletedId)
+        cachedSessions.remove(deletedId)
+        displayLimits.remove(deletedId)
         _connection.update { it.copy(sessionId = sessionId) }
         publishChat()
         updateRunning()

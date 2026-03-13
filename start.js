@@ -407,10 +407,10 @@ io.on("connection", async (socket) => {
     ws.saveMeta(); ws.send({type:"session_created",sessionId:sr.sessionId,cwd,title,sessions:ws.sessionList(),modes:{availableModes:ws.availableModes,currentModeId:ws.currentModeId},models:{availableModels:ws.availableModels,currentModelId:initModelId},configOptions:ws.configOptions,yoloLevel:0}); }catch(e){ws.send({type:"error",message:""+e});}
   });
   socket.on("switch_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid))return; const s=ws.sessions.get(sid);
-    // Per-client switch: only notify the requesting socket (not broadcast)
     socket.emit("msg", {type:"session_switched",sessionId:sid,cwd:s.cwd,title:s.title,sessions:ws.sessionList(),
       models:{availableModels:ws.availableModels,currentModelId:s.modelId||ws.availableModels?.[0]?.id||''},yoloLevel:s.yoloLevel??ws.yoloLevel});
-    // Replay this session's history to the requesting client only
+    // Skip replay if client already has this session cached
+    if (d?.skipReplay) return;
     const buf = ws.getReplay(sid);
     if (buf.length) {
       socket.emit("msg", { type: "replay_start", sessionId: sid });

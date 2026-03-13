@@ -225,9 +225,10 @@ class CopilotWebSocket(
         })
     }
 
-    fun switchSession(sessionId: String) {
+    fun switchSession(sessionId: String, skipReplay: Boolean = false) {
         socket?.emit("switch_session", JSONObject().apply {
             put("sessionId", sessionId)
+            if (skipReplay) put("skipReplay", true)
         })
     }
 

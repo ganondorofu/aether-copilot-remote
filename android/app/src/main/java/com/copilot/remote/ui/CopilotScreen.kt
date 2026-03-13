@@ -131,6 +131,23 @@ fun CopilotScreen(
             }
         }
     }
+    // Load more when scrolled to the top
+    val hasMore by vm.hasMoreMessages.collectAsState()
+    val isAtTop = remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            if (info.totalItemsCount == 0) false
+            else {
+                val firstVisible = info.visibleItemsInfo.firstOrNull()?.index ?: Int.MAX_VALUE
+                firstVisible <= 1
+            }
+        }
+    }
+    LaunchedEffect(isAtTop.value) {
+        if (isAtTop.value && hasMore) {
+            vm.loadMoreMessages()
+        }
+    }
     LaunchedEffect(chatItems.size) {
         if (chatItems.isEmpty()) return@LaunchedEffect
         if (isAtBottom.value) {
