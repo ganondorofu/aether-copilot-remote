@@ -13,8 +13,8 @@ android {
         applicationId = "com.copilot.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "5.3.0"
+        versionCode = 5
+        versionName = "5.4.0"
     }
 
     signingConfigs {

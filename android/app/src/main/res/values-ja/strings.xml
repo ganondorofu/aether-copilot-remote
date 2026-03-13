@@ -40,6 +40,7 @@
     <string name="cd_toggle_theme">テーマ切替</string>
     <string name="cd_settings">設定</string>
     <string name="cd_attach_file">ファイル添付</string>
+    <string name="cd_copy">コピー</string>
     <string name="cd_reconnect">再接続</string>
     <string name="cd_cancel">キャンセル</string>
     <string name="cd_send">送信</string>
@@ -60,6 +61,9 @@
     <string name="app_lock">アプリロック</string>
     <string name="app_lock_desc">アプリ起動時にログインを要求する</string>
     <string name="no_config_options">設定オプションはありません</string>
+    <!-- Theme -->
+    <string name="toggle_theme">テーマ</string>
+    <string name="toggle_theme_desc">ライト/ダークモードを切り替える</string>
     <!-- Usage -->
     <string name="usage_quota">残量: %s%%</string>
     <string name="usage_premium">プレミアム: %1$s/%2$s</string>

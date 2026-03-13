@@ -20,8 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.copilot.remote.R
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -30,6 +33,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.copilot.remote.model.*
 import com.copilot.remote.ui.components.MarkdownText
@@ -74,10 +79,29 @@ fun CopilotScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showYoloMenu by remember { mutableStateOf(false) }
     var showNewSessionDialog by remember { mutableStateOf(false) }
+    var attachedFileName by remember { mutableStateOf<String?>(null) }
+    var attachedFileContent by remember { mutableStateOf<String?>(null) }
     var drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // File picker launcher
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            try {
+                val cursor = context.contentResolver.query(it, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                val name = cursor?.use { c -> if (c.moveToFirst()) c.getString(0) else "file" } ?: "file"
+                val bytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() }
+                if (bytes != null && bytes.size <= 100_000) {
+                    attachedFileName = name
+                    attachedFileContent = String(bytes, Charsets.UTF_8)
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     // Check auth status ONCE when all preferences have loaded
     LaunchedEffect(savedCreds?.value) {
@@ -331,6 +355,18 @@ fun CopilotScreen(
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
+            // Theme toggle
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.toggle_theme)) },
+                supportingContent = { Text(stringResource(R.string.toggle_theme_desc), fontSize = 12.sp) },
+                trailingContent = {
+                    IconButton(onClick = onThemeToggle) {
+                        Icon(Icons.Default.LightMode, contentDescription = stringResource(R.string.cd_toggle_theme))
+                    }
+                }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
             if (configOptions.isEmpty()) {
                 Text(
                     stringResource(R.string.no_config_options),
@@ -512,28 +548,14 @@ fun CopilotScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("△", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
-                            Text(stringResource(R.string.app_name), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            // Status badge
-                            Surface(
-                                shape = CircleShape,
-                                color = if (connection.connected) Color(0xFF3FB950) else Color(0xFF6E7681),
-                                modifier = Modifier.size(8.dp),
-                            ) {}
-                        }
-                        // CWD display (if available)
-                        connection.sessions.find { it.sessionId == connection.sessionId }?.let { session ->
-                            // Display basic session info as CWD placeholder
-                            Text(
-                                text = "Session: ${session.sessionId.take(8)}",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("△", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.app_name), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Surface(
+                            shape = CircleShape,
+                            color = if (connection.connected) Color(0xFF3FB950) else Color(0xFF6E7681),
+                            modifier = Modifier.size(8.dp),
+                        ) {}
                     }
                 },
                 navigationIcon = {
@@ -542,107 +564,9 @@ fun CopilotScreen(
                     }
                 },
                 actions = {
-                    // YOLO level selector
-                    Box {
-                        Surface(
-                            onClick = { showYoloMenu = true },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                            modifier = Modifier.padding(horizontal = 4.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            ) {
-                                Text(
-                                    text = when (yoloLevel) {
-                                        0 -> stringResource(R.string.yolo_normal)
-                                        1 -> stringResource(R.string.yolo_trust_reads)
-                                        2 -> stringResource(R.string.yolo_trust_most)
-                                        3 -> stringResource(R.string.yolo_yolo)
-                                        else -> stringResource(R.string.yolo_normal)
-                                    },
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Icon(
-                                    Icons.Default.ArrowDropDown,
-                                    contentDescription = stringResource(R.string.cd_select_yolo),
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        DropdownMenu(
-                            expanded = showYoloMenu,
-                            onDismissRequest = { showYoloMenu = false },
-                        ) {
-                            listOf(
-                                0 to stringResource(R.string.yolo_normal),
-                                1 to stringResource(R.string.yolo_trust_reads),
-                                2 to stringResource(R.string.yolo_trust_most),
-                                3 to stringResource(R.string.yolo_yolo),
-                            ).forEach { (level, label) ->
-                                DropdownMenuItem(
-                                    text = { 
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            if (level == yoloLevel) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            } else {
-                                                Spacer(Modifier.size(18.dp))
-                                            }
-                                            Text(label, fontSize = 13.sp)
-                                        }
-                                    },
-                                    onClick = {
-                                        vm.setYoloLevel(level)
-                                        showYoloMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    // Model button
-                    if (models.isNotEmpty()) {
-                        val displayModel = models.find { it.modelId == currentModel }
-                            ?: models.firstOrNull()
-                        TextButton(onClick = { showModelSheet = true }) {
-                            Text(
-                                displayModel?.name?.take(12) ?: currentModel.take(12),
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                    // Theme toggle button
-                    IconButton(onClick = onThemeToggle) {
-                        Icon(
-                            Icons.Default.LightMode, // Moon for dark theme, Sun for light
-                            contentDescription = stringResource(R.string.cd_toggle_theme)
-                        )
-                    }
-                    // Settings button
                     IconButton(onClick = { showSettingsSheet = true }) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.cd_settings))
                     }
-                    // Attach file button (TODO: implement file picker)
-                    IconButton(onClick = { 
-                        // TODO: Implement file attachment with Activity Result API
-                    }) {
-                        Icon(Icons.Default.AttachFile, contentDescription = stringResource(R.string.cd_attach_file))
-                    }
-                    // Reconnect
                     if (!connection.connected) {
                         IconButton(onClick = { vm.reconnect() }) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_reconnect))
@@ -676,6 +600,131 @@ fun CopilotScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
 
+                // Model + YOLO chips row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Model chip
+                    if (models.isNotEmpty()) {
+                        val displayModel = models.find { it.modelId == currentModel } ?: models.firstOrNull()
+                        Surface(
+                            onClick = { showModelSheet = true },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                Text(displayModel?.name?.take(18) ?: currentModel.take(18), fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                    // YOLO chip
+                    Box {
+                        Surface(
+                            onClick = { showYoloMenu = true },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            ) {
+                                Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    when (yoloLevel) {
+                                        0 -> stringResource(R.string.yolo_normal)
+                                        1 -> stringResource(R.string.yolo_trust_reads)
+                                        2 -> stringResource(R.string.yolo_trust_most)
+                                        3 -> stringResource(R.string.yolo_yolo)
+                                        else -> stringResource(R.string.yolo_normal)
+                                    },
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showYoloMenu,
+                            onDismissRequest = { showYoloMenu = false },
+                        ) {
+                            listOf(
+                                0 to stringResource(R.string.yolo_normal),
+                                1 to stringResource(R.string.yolo_trust_reads),
+                                2 to stringResource(R.string.yolo_trust_most),
+                                3 to stringResource(R.string.yolo_yolo),
+                            ).forEach { (level, label) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            if (level == yoloLevel) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                            } else {
+                                                Spacer(Modifier.size(18.dp))
+                                            }
+                                            Text(label, fontSize = 13.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        vm.setYoloLevel(level)
+                                        showYoloMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    // Usage inline
+                    usage?.let { u ->
+                        val parts = mutableListOf<String>()
+                        u.percentRemaining?.let { parts.add("${it}%") }
+                        if (u.premiumRequestsUsed != null || u.premiumRequestsLimit != null) {
+                            parts.add("${u.premiumRequestsUsed ?: "?"}/${u.premiumRequestsLimit ?: "?"}")
+                        }
+                        if (parts.isNotEmpty()) {
+                            Text(
+                                text = parts.joinToString(" · "),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            )
+                        }
+                    }
+                }
+
+                // Attached file chip
+                if (attachedFileName != null) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        ) {
+                            Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Spacer(Modifier.width(4.dp))
+                            Text(attachedFileName ?: "", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            IconButton(
+                                onClick = { attachedFileName = null; attachedFileContent = null },
+                                modifier = Modifier.size(24.dp),
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+
                 // Input row
                 Row(
                     modifier = Modifier
@@ -683,13 +732,21 @@ fun CopilotScreen(
                         .navigationBarsPadding()
                         .imePadding(),
                     verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    // Attach file button
+                    IconButton(
+                        onClick = { filePickerLauncher.launch("*/*") },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(Icons.Default.AttachFile, contentDescription = stringResource(R.string.cd_attach_file), modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
                     // Slash command button
                     if (commands.isNotEmpty()) {
                         IconButton(
                             onClick = { showCommandSheet = true },
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(36.dp),
                         ) {
                             Text("/", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
@@ -724,37 +781,24 @@ fun CopilotScreen(
                     } else {
                         FilledIconButton(
                             onClick = {
-                                if (promptText.isNotBlank()) {
-                                    vm.sendPrompt(promptText)
+                                if (promptText.isNotBlank() || attachedFileContent != null) {
+                                    val message = buildString {
+                                        if (attachedFileContent != null && attachedFileName != null) {
+                                            append("\uD83D\uDCCE ${attachedFileName}\n```\n${attachedFileContent}\n```\n\n")
+                                        }
+                                        append(promptText)
+                                    }.trim()
+                                    vm.sendPrompt(message)
                                     promptText = ""
+                                    attachedFileName = null
+                                    attachedFileContent = null
                                 }
                             },
                             modifier = Modifier.size(42.dp),
-                            enabled = promptText.isNotBlank() && connection.connected,
+                            enabled = (promptText.isNotBlank() || attachedFileContent != null) && connection.connected,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.cd_send))
                         }
-                    }
-                }
-
-                // Usage display
-                usage?.let { u ->
-                    val parts = mutableListOf<String>()
-                    u.percentRemaining?.let { parts.add(stringResource(R.string.usage_quota, it)) }
-                    if (u.premiumRequestsUsed != null || u.premiumRequestsLimit != null) {
-                        parts.add(stringResource(R.string.usage_premium, u.premiumRequestsUsed ?: "?", u.premiumRequestsLimit ?: "?"))
-                    }
-                    u.contextSize?.let { parts.add("ctx: ${(it / 1000)}k") }
-                    u.inputTokens?.let { parts.add("in: $it") }
-                    u.outputTokens?.let { parts.add("out: $it") }
-                    
-                    if (parts.isNotEmpty()) {
-                        Text(
-                            text = parts.joinToString(" · "),
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        )
                     }
                 }
             }
@@ -1092,33 +1136,57 @@ fun SessionListItem(
 
 @Composable
 fun UserBubble(text: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    val clipboardManager = LocalClipboardManager.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        IconButton(
+            onClick = { clipboardManager.setText(AnnotatedString(text)) },
+            modifier = Modifier.size(28.dp),
+        ) {
+            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+        }
         Surface(
             shape = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp),
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
-            Text(text, modifier = Modifier.padding(12.dp), color = Color.White, fontSize = 14.sp)
+            SelectionContainer {
+                Text(text, modifier = Modifier.padding(12.dp), color = Color.White, fontSize = 14.sp)
+            }
         }
     }
 }
 
 @Composable
 fun AgentBubble(text: String) {
-    Surface(
-        shape = RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        MarkdownText(
-            markdown = text,
-            modifier = Modifier.padding(12.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-            ),
-        )
+    val clipboardManager = LocalClipboardManager.current
+    Column {
+        Surface(
+            shape = RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            MarkdownText(
+                markdown = text,
+                modifier = Modifier.padding(12.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                ),
+            )
+        }
+        Row(modifier = Modifier.padding(start = 4.dp, top = 1.dp)) {
+            IconButton(
+                onClick = { clipboardManager.setText(AnnotatedString(text)) },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+            }
+        }
     }
 }
 

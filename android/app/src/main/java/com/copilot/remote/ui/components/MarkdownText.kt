@@ -39,6 +39,7 @@ fun MarkdownText(
                 setTextColor(textColor)
                 textSize = style.fontSize.value
                 typeface = if (style.fontWeight?.weight ?: 400 > 500) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                setTextIsSelectable(true)
             }
         },
         update = { textView ->
