@@ -588,9 +588,11 @@ fun CopilotScreen(
                     }
                     // Model button
                     if (models.isNotEmpty()) {
+                        val displayModel = models.find { it.modelId == currentModel }
+                            ?: models.firstOrNull()
                         TextButton(onClick = { showModelSheet = true }) {
                             Text(
-                                models.find { it.modelId == currentModel }?.name?.take(12) ?: currentModel.take(12),
+                                displayModel?.name?.take(12) ?: currentModel.take(12),
                                 fontSize = 11.sp,
                                 maxLines = 1,
                             )

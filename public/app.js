@@ -65,9 +65,11 @@ function timeAgo(ts) {
 function fmtSize(n) {
   if (n<1024) return n+'B'; if (n<1048576) return (n/1024).toFixed(1)+'K'; return (n/1048576).toFixed(1)+'M';
 }
-function scrollDown() {
-  if (S.replaying) return;
-  const c = $('chat'); requestAnimationFrame(() => c.scrollTop = c.scrollHeight);
+function scrollDown(force) {
+  if (S.replaying && !force) return;
+  const c = $('chat');
+  const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 150;
+  if (nearBottom || force) requestAnimationFrame(() => c.scrollTop = c.scrollHeight);
 }
 function initScrollBtn() {
   const chat = $('chat'), btn = $('scroll-bottom-btn');
@@ -185,7 +187,7 @@ function handleMsg(d) {
       if (rc) { rc.el.innerHTML = ''; rc.agentEl = null; rc.agentBuf = ''; rc.thoughtEl = null; rc.thoughtBuf = ''; rc.tools.clear(); }
       break;
     }
-    case 'replay_end': S.replaying = false; S._replayingSid = null; scrollDown(); break;
+    case 'replay_end': S.replaying = false; S._replayingSid = null; scrollDown(true); break;
     case 'chunk': handleChunk(d); break;
     case 'tool': addToolCard(d); break;
     case 'tool_update': updateToolCard(d); break;
@@ -234,7 +236,7 @@ function handleInit(d) {
   renderModels(); renderModes(); renderSidebar(); updateHeader();
   ensureChat(S.sid);
   showActiveChat();
-  scrollDown();
+  scrollDown(true);
 }
 
 function handleChunk(d) {
@@ -275,20 +277,28 @@ function scheduleChunkRender(c, role) {
   if (c[key]) return;
   c[key] = setTimeout(() => {
     c[key] = null;
+    let rendered = false;
     if (role === 'agent' && c.agentEl) {
       const md = c.agentEl.querySelector('.md-content');
-      if (md) md.innerHTML = renderMd(c.agentBuf);
+      if (md) { md.innerHTML = renderMd(c.agentBuf); rendered = true; }
     } else if (role === 'thought' && c.thoughtEl) {
       const tc = c.thoughtEl.querySelector('.thought-content');
-      if (tc) tc.textContent = c.thoughtBuf;
+      if (tc) { tc.textContent = c.thoughtBuf; rendered = true; }
     }
-    scrollDown();
+    if (rendered) scrollDown();
   }, CHUNK_THROTTLE_MS);
 }
 
 function addToolCard(d) {
   const sid = d.sessionId || S.sid;
   const c = ensureChat(sid);
+  // Finalize any open agent element so tool card appears in correct order
+  if (c.agentEl && c.agentBuf) {
+    if (c._renderTimer_agent) { clearTimeout(c._renderTimer_agent); c._renderTimer_agent = null; }
+    const md = c.agentEl.querySelector('.md-content');
+    if (md) { md.innerHTML = renderMd(c.agentBuf); highlightCode(c.agentEl); }
+    c.agentEl = null; c.agentBuf = '';
+  }
   const div = document.createElement('div');
   div.className = 'tool-card';
   div.dataset.toolId = d.toolCallId;
@@ -416,7 +426,7 @@ function handleSessionSwitched(d) {
   if (d.yoloLevel !== undefined) { S.yoloLevel = d.yoloLevel; $('yolo-select').value = S.yoloLevel; }
   ensureChat(S.sid);
   showActiveChat(); renderSidebar(); updateHeader();
-  scrollDown();
+  scrollDown(true);
 }
 function handleSessionDeleted(d) {
   S.sessions = d.sessions || S.sessions;
@@ -452,7 +462,7 @@ function showActiveChat() {
   S.running = activeRunning;
   $('send-btn').hidden = activeRunning;
   $('cancel-btn').hidden = !activeRunning;
-  scrollDown();
+  scrollDown(true);
 }
 function appendMsg(sid, html) {
   const c = ensureChat(sid || S.sid);
@@ -583,6 +593,10 @@ function renderModels() {
     const mult = m._meta?.copilotUsage;
     o.textContent = (m.name||m.id) + (mult != null ? ` (${String(mult).replace(/x$/,'')}x)` : '');
     sel.appendChild(o);
+  }
+  // Default to first model if current is empty or unknown
+  if ((!S.currentModelId || !S.models.some(m => m.id === S.currentModelId)) && S.models.length) {
+    S.currentModelId = S.models[0].id;
   }
   sel.value = S.currentModelId;
 }
@@ -781,6 +795,7 @@ function handleSend() {
   S.attachments = [];
   renderAttachments();
   $('command-palette').hidden = true;
+  scrollDown(true);
 }
 function handleCancel() {
   if (socket) socket.emit('cancel', { sessionId: S.sid });

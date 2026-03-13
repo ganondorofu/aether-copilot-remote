@@ -540,7 +540,9 @@ class CopilotViewModel : ViewModel() {
                     } catch (_: Exception) { null }
                 }
             }
-            _currentModel.value = modelsObj.optString("currentModelId", "")
+            _currentModel.value = modelsObj.optString("currentModelId", "").ifEmpty {
+                _models.value.firstOrNull()?.modelId ?: ""
+            }
         }
 
         // Parse config options
@@ -739,7 +741,6 @@ class CopilotViewModel : ViewModel() {
     private fun parsePerSessionModelYolo(data: org.json.JSONObject) {
         val modelsObj = data.optJSONObject("models")
         if (modelsObj != null) {
-            _currentModel.value = modelsObj.optString("currentModelId", "")
             val modelsArray = modelsObj.optJSONArray("availableModels")
             if (modelsArray != null) {
                 _models.value = (0 until modelsArray.length()).mapNotNull { i ->
@@ -747,6 +748,9 @@ class CopilotViewModel : ViewModel() {
                         parseModelInfo(modelsArray.getJSONObject(i))
                     } catch (_: Exception) { null }
                 }
+            }
+            _currentModel.value = modelsObj.optString("currentModelId", "").ifEmpty {
+                _models.value.firstOrNull()?.modelId ?: ""
             }
         }
         if (data.has("yoloLevel")) {
@@ -790,7 +794,8 @@ class CopilotViewModel : ViewModel() {
         val sid = data.optString("sessionId", "")
         val currentSid = _connection.value.sessionId
         if (sid.isEmpty() || sid == currentSid) {
-            _currentModel.value = data.optString("modelId", "")
+            val mid = data.optString("modelId", "")
+            _currentModel.value = mid.ifEmpty { _models.value.firstOrNull()?.modelId ?: "" }
         }
         val modelsArray = data.optJSONArray("availableModels")
         if (modelsArray != null) {

@@ -227,7 +227,7 @@ function setupProc(ws) {
       const cwd = first?.cwd || COPILOT_CWD;
       const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
       ws.sessions.clear(); ws.activeSessionId = sr.sessionId;
-      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true, createdAt: first?.createdAt || Date.now(), modelId: sr.models?.currentModelId || '', yoloLevel: first?.yoloLevel ?? 0 });
+      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true, createdAt: first?.createdAt || Date.now(), modelId: sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: first?.yoloLevel ?? 0 });
       if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
       if (sr.models) { ws.availableModels = sr.models.availableModels||[]; }
       ws.alive = true; ws.saveMeta();
@@ -245,7 +245,7 @@ async function createWS(cwd) {
   if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
   if (sr.models) { ws.availableModels = sr.models.availableModels||[]; }
   if (sr.configOptions) ws.configOptions = sr.configOptions;
-  const initModelId = sr.models?.currentModelId || '';
+  const initModelId = sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '';
   ws.sessions.set(ws.activeSessionId, { cwd, title: cwd.split("/").pop()||"Default", busy: false, queue: [], titleSet: false, createdAt: Date.now(), modelId: initModelId, yoloLevel: 0 });
   ws.alive = true; workspaces.set(ws.id, ws); ws.saveMeta();
   return ws;
@@ -266,7 +266,7 @@ async function restoreWorkspace(savedId) {
     try {
       const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
       idMap.set(sMeta.sessionId, sr.sessionId);
-      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true, createdAt: sMeta.createdAt || Date.now(), modelId: sMeta.modelId || '', yoloLevel: sMeta.yoloLevel ?? ws.yoloLevel });
+      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true, createdAt: sMeta.createdAt || Date.now(), modelId: sMeta.modelId || sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: sMeta.yoloLevel ?? ws.yoloLevel });
       if (!ws.activeSessionId) {
         ws.activeSessionId = sr.sessionId;
         if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
@@ -301,10 +301,11 @@ async function restoreWorkspace(savedId) {
 function sendInit(ws, socket, isReconnect, preferredSid) {
   const sid = (preferredSid && ws.sessions.has(preferredSid)) ? preferredSid : ws.activeSessionId;
   const activeSess = ws.sessions.get(sid);
+  const resolvedModelId = activeSess?.modelId || ws.availableModels?.[0]?.id || '';
   socket.emit("msg", {
     type: "init", workspaceId: ws.id, sessionId: sid,
     modes: { availableModes: ws.availableModes, currentModeId: ws.currentModeId },
-    models: { availableModels: ws.availableModels, currentModelId: activeSess?.modelId || '' },
+    models: { availableModels: ws.availableModels, currentModelId: resolvedModelId },
     configOptions: ws.configOptions, cwd: activeSess?.cwd||COPILOT_CWD,
     sessions: ws.sessionList(), yoloLevels: YOLO, yoloLevel: activeSess?.yoloLevel ?? ws.yoloLevel, isReconnect,
   });
@@ -400,7 +401,7 @@ io.on("connection", async (socket) => {
   socket.on("set_config_option", async d => { if(!ws?.alive)return; try{const p={sessionId:d?.sessionId||ws.activeSessionId,configId:d.configId};if(d.valueType==="boolean"){p.type="boolean";p.value=d.value;}else p.value=d.value;const r=await ws.conn.setSessionConfigOption(p);if(r?.configOptions){ws.configOptions=r.configOptions;ws.send({type:"config_update",configOptions:ws.configOptions});}}catch(e){ws.send({type:"error",message:""+e});} });
   socket.on("create_session", async d => {
     if(!ws?.alive)return; const cwd=d?.cwd||COPILOT_CWD, title=d?.title||cwd.split("/").pop()||"Session";
-    try{ const sr=await ws.conn.newSession({cwd,mcpServers:[]}); const initModelId=sr.models?.currentModelId||''; ws.sessions.set(sr.sessionId,{cwd,title,busy:false,queue:[],titleSet:!!d?.title,createdAt:Date.now(),modelId:initModelId,yoloLevel:0}); ws.activeSessionId=sr.sessionId;
+    try{ const sr=await ws.conn.newSession({cwd,mcpServers:[]}); const initModelId=sr.models?.currentModelId||sr.models?.availableModels?.[0]?.id||''; ws.sessions.set(sr.sessionId,{cwd,title,busy:false,queue:[],titleSet:!!d?.title,createdAt:Date.now(),modelId:initModelId,yoloLevel:0}); ws.activeSessionId=sr.sessionId;
     if(sr.modes){ws.availableModes=sr.modes.availableModes||ws.availableModes;ws.currentModeId=sr.modes.currentModeId||ws.currentModeId;}
     if(sr.models){ws.availableModels=sr.models.availableModels||ws.availableModels;}
     ws.saveMeta(); ws.send({type:"session_created",sessionId:sr.sessionId,cwd,title,sessions:ws.sessionList(),modes:{availableModes:ws.availableModes,currentModeId:ws.currentModeId},models:{availableModels:ws.availableModels,currentModelId:initModelId},configOptions:ws.configOptions,yoloLevel:0}); }catch(e){ws.send({type:"error",message:""+e});}
@@ -408,7 +409,7 @@ io.on("connection", async (socket) => {
   socket.on("switch_session", d => { if(!ws)return; const sid=d?.sessionId; if(!sid||!ws.sessions.has(sid))return; const s=ws.sessions.get(sid);
     // Per-client switch: only notify the requesting socket (not broadcast)
     socket.emit("msg", {type:"session_switched",sessionId:sid,cwd:s.cwd,title:s.title,sessions:ws.sessionList(),
-      models:{availableModels:ws.availableModels,currentModelId:s.modelId||''},yoloLevel:s.yoloLevel??ws.yoloLevel});
+      models:{availableModels:ws.availableModels,currentModelId:s.modelId||ws.availableModels?.[0]?.id||''},yoloLevel:s.yoloLevel??ws.yoloLevel});
     // Replay this session's history to the requesting client only
     const buf = ws.getReplay(sid);
     if (buf.length) {
