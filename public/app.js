@@ -424,6 +424,9 @@ function handleSessionSwitched(d) {
   // Per-session model & yolo
   if (d.models) { S.models = d.models.availableModels || S.models; S.currentModelId = d.models.currentModelId || ''; renderModels(); }
   if (d.yoloLevel !== undefined) { S.yoloLevel = d.yoloLevel; $('yolo-select').value = S.yoloLevel; }
+  // Sync running state from session busy flag
+  const curSession = (d.sessions||[]).find(s => s.sessionId === S.sid);
+  if (curSession?.busy) runningSessions.add(S.sid); else runningSessions.delete(S.sid);
   ensureChat(S.sid);
   showActiveChat(); renderSidebar(); updateHeader();
   scrollDown(true);
@@ -512,10 +515,10 @@ function renderSidebar() {
   const list = $('sidebar-sessions');
   list.innerHTML = '';
   if (!S.sessions.length) { list.innerHTML = '<div class="sidebar-empty">' + esc(t('sidebar_empty')) + '</div>'; return; }
-  const sorted = [...S.sessions].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  const sorted = [...S.sessions].sort((a,b) => (b.lastActiveAt||b.createdAt||0) - (a.lastActiveAt||a.createdAt||0));
   let lastLabel = '';
   for (const s of sorted) {
-    const label = sessionDateLabel(s.createdAt);
+    const label = sessionDateLabel(s.lastActiveAt||s.createdAt);
     if (label !== lastLabel) {
       lastLabel = label;
       const hdr = document.createElement('div');

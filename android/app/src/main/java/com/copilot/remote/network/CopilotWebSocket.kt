@@ -57,6 +57,8 @@ class CopilotWebSocket(
         val active: Boolean,
         val busy: Boolean,
         val createdAt: Long = 0L,
+        val lastActiveAt: Long = 0L,
+        val messageCount: Int = 0,
     )
 
     private val _events = Channel<Event>(Channel.UNLIMITED)

@@ -48,10 +48,11 @@ class CopilotViewModel : ViewModel() {
 
     // Cache: sessions that have completed at least one replay
     private val cachedSessions = mutableSetOf<String>()
-    // Pagination: how many items to show per session (from the end)
+    private val cachedMessageCounts = mutableMapOf<String, Int>()
+    // Pagination: show last N conversation turns (UserMessage = 1 turn)
     private val displayLimits = mutableMapOf<String, Int>()
-    private val INITIAL_DISPLAY_LIMIT = 50
-    private val LOAD_MORE_COUNT = 30
+    private val INITIAL_CONV_LIMIT = 5
+    private val LOAD_MORE_CONV = 3
     private val _hasMoreMessages = MutableStateFlow(false)
     val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages.asStateFlow()
 
@@ -63,16 +64,22 @@ class CopilotViewModel : ViewModel() {
     private fun publishChat() {
         val sid = currentSessionId() ?: return
         val all = getSessionChat(sid)
-        val limit = displayLimits.getOrPut(sid) { INITIAL_DISPLAY_LIMIT }
-        _chatItems.value = if (all.size > limit) all.takeLast(limit) else all.toList()
-        _hasMoreMessages.value = all.size > limit
+        val convLimit = displayLimits.getOrPut(sid) { INITIAL_CONV_LIMIT }
+        // Count conversation turns backwards (UserMessage = start of a turn)
+        var convCount = 0
+        var startIdx = all.size
+        for (i in all.indices.reversed()) {
+            if (all[i] is ChatItem.UserMessage) convCount++
+            if (convCount > convLimit) break
+            startIdx = i
+        }
+        _chatItems.value = if (startIdx > 0) all.subList(startIdx, all.size).toList() else all.toList()
+        _hasMoreMessages.value = startIdx > 0
     }
     fun loadMoreMessages() {
         val sid = currentSessionId() ?: return
-        val chat = getSessionChat(sid)
-        val current = displayLimits.getOrPut(sid) { INITIAL_DISPLAY_LIMIT }
-        if (current >= chat.size) return
-        displayLimits[sid] = (current + LOAD_MORE_COUNT).coerceAtMost(chat.size)
+        val current = displayLimits.getOrPut(sid) { INITIAL_CONV_LIMIT }
+        displayLimits[sid] = current + LOAD_MORE_CONV
         publishChat()
     }
 
@@ -376,6 +383,7 @@ class CopilotViewModel : ViewModel() {
                         _connection.update { it.copy(connected = false) }
                         runningSessions.clear()
                         cachedSessions.clear()
+                        cachedMessageCounts.clear()
                         updateRunning()
                     }
                     is CopilotWebSocket.Event.Init -> handleInit(event.data)
@@ -396,7 +404,11 @@ class CopilotViewModel : ViewModel() {
                         replaying = false
                         replaySessionId = null
                         if (wasCurrent) publishChat()
-                        if (sid != null) cachedSessions.add(sid)
+                        if (sid != null) {
+                            cachedSessions.add(sid)
+                            val serverCount = _connection.value.sessions.find { it.sessionId == sid }?.messageCount ?: 0
+                            cachedMessageCounts[sid] = serverCount
+                        }
                     }
                     is CopilotWebSocket.Event.Chunk -> handleChunk(event.data)
                     is CopilotWebSocket.Event.Tool -> handleTool(event.data)
@@ -515,8 +527,11 @@ class CopilotViewModel : ViewModel() {
         // Save current buffers before switching
         flushBuffers()
         _permissions.value = emptyList()
-        val isCached = sessionId in cachedSessions
-        client.switchSession(sessionId, skipReplay = isCached)
+        // Check if cache is still valid by comparing message count
+        val serverCount = _connection.value.sessions.find { it.sessionId == sessionId }?.messageCount ?: 0
+        val cachedCount = cachedMessageCounts[sessionId] ?: -1
+        val cacheValid = sessionId in cachedSessions && cachedCount == serverCount
+        client.switchSession(sessionId, skipReplay = cacheValid)
     }
 
     fun deleteSession(sessionId: String) {
@@ -547,6 +562,8 @@ class CopilotViewModel : ViewModel() {
                     active = s.optBoolean("active"),
                     busy = s.optBoolean("busy"),
                     createdAt = s.optLong("createdAt", 0L),
+                    lastActiveAt = s.optLong("lastActiveAt", 0L),
+                    messageCount = s.optInt("messageCount", 0),
                 )
             }
             _connection.update { it.copy(sessions = sessions) }
@@ -735,7 +752,16 @@ class CopilotViewModel : ViewModel() {
         flushBuffers()
         _connection.update { it.copy(sessionId = sessionId) }
         // Reset display limit for fresh view of this session
-        displayLimits[sessionId] = INITIAL_DISPLAY_LIMIT
+        displayLimits[sessionId] = INITIAL_CONV_LIMIT
+        // Sync running state from session busy flag
+        val sessionsArray = data.optJSONArray("sessions")
+        if (sessionsArray != null) {
+            for (i in 0 until sessionsArray.length()) {
+                val s = sessionsArray.getJSONObject(i)
+                val sid = s.optString("sessionId")
+                if (s.optBoolean("busy")) runningSessions.add(sid) else runningSessions.remove(sid)
+            }
+        }
         // Publish the stored chat for the new session (replay will repopulate if not cached)
         publishChat()
         updateRunning()
@@ -752,6 +778,7 @@ class CopilotViewModel : ViewModel() {
         sessionChats.remove(deletedId)
         runningSessions.remove(deletedId)
         cachedSessions.remove(deletedId)
+        cachedMessageCounts.remove(deletedId)
         displayLimits.remove(deletedId)
         _connection.update { it.copy(sessionId = sessionId) }
         publishChat()
@@ -778,6 +805,8 @@ class CopilotViewModel : ViewModel() {
                     active = s.optBoolean("active"),
                     busy = s.optBoolean("busy"),
                     createdAt = s.optLong("createdAt", 0L),
+                    lastActiveAt = s.optLong("lastActiveAt", 0L),
+                    messageCount = s.optInt("messageCount", 0),
                 )
             }
             _connection.update { it.copy(sessions = sessions) }

@@ -15,7 +15,7 @@ import * as store from "./lib/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
-const APP_VERSION = { versionCode: 5, versionName: "5.4.0" };
+const APP_VERSION = { versionCode: 6, versionName: "5.5.0" };
 const COPILOT_PATH = process.env.COPILOT_PATH || "copilot";
 const COPILOT_ARGS = (process.env.COPILOT_ARGS || "").split(" ").filter(Boolean);
 const COPILOT_CWD = process.env.COPILOT_CWD || os.homedir();
@@ -116,6 +116,8 @@ class Workspace {
     const sid = msg.sessionId || this.activeSessionId;
     if (sid && Workspace.REPLAY_TYPES.has(msg.type)) {
       store.appendMessage(sid, msg);
+      const s = this.sessions.get(sid);
+      if (s) { s.lastActiveAt = Date.now(); s.messageCount = (s.messageCount || 0) + 1; }
     }
     for (const s of this.sockets) {
       if (s === excludeSocket) continue;
@@ -142,7 +144,9 @@ class Workspace {
   sessionList() {
     return [...this.sessions.entries()].map(([id, s]) => ({
       sessionId: id, cwd: s.cwd, title: s.title, active: id === this.activeSessionId, busy: s.busy,
-      createdAt: s.createdAt || Date.now(), modelId: s.modelId || '', yoloLevel: s.yoloLevel ?? this.yoloLevel,
+      createdAt: s.createdAt || Date.now(), lastActiveAt: s.lastActiveAt || s.createdAt || Date.now(),
+      modelId: s.modelId || '', yoloLevel: s.yoloLevel ?? this.yoloLevel,
+      messageCount: s.messageCount || 0,
     }));
   }
   saveMeta() {
@@ -227,7 +231,7 @@ function setupProc(ws) {
       const cwd = first?.cwd || COPILOT_CWD;
       const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
       ws.sessions.clear(); ws.activeSessionId = sr.sessionId;
-      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true, createdAt: first?.createdAt || Date.now(), modelId: sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: first?.yoloLevel ?? 0 });
+      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true, createdAt: first?.createdAt || Date.now(), lastActiveAt: Date.now(), messageCount: 0, modelId: sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: first?.yoloLevel ?? 0 });
       if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
       if (sr.models) { ws.availableModels = sr.models.availableModels||[]; }
       ws.alive = true; ws.saveMeta();
@@ -246,7 +250,7 @@ async function createWS(cwd) {
   if (sr.models) { ws.availableModels = sr.models.availableModels||[]; }
   if (sr.configOptions) ws.configOptions = sr.configOptions;
   const initModelId = sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '';
-  ws.sessions.set(ws.activeSessionId, { cwd, title: cwd.split("/").pop()||"Default", busy: false, queue: [], titleSet: false, createdAt: Date.now(), modelId: initModelId, yoloLevel: 0 });
+  ws.sessions.set(ws.activeSessionId, { cwd, title: cwd.split("/").pop()||"Default", busy: false, queue: [], titleSet: false, createdAt: Date.now(), lastActiveAt: Date.now(), messageCount: 0, modelId: initModelId, yoloLevel: 0 });
   ws.alive = true; workspaces.set(ws.id, ws); ws.saveMeta();
   return ws;
 }
@@ -266,7 +270,7 @@ async function restoreWorkspace(savedId) {
     try {
       const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
       idMap.set(sMeta.sessionId, sr.sessionId);
-      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true, createdAt: sMeta.createdAt || Date.now(), modelId: sMeta.modelId || sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: sMeta.yoloLevel ?? ws.yoloLevel });
+      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true, createdAt: sMeta.createdAt || Date.now(), lastActiveAt: sMeta.lastActiveAt || sMeta.createdAt || Date.now(), messageCount: sMeta.messageCount || 0, modelId: sMeta.modelId || sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: sMeta.yoloLevel ?? ws.yoloLevel });
       if (!ws.activeSessionId) {
         ws.activeSessionId = sr.sessionId;
         if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
@@ -401,7 +405,7 @@ io.on("connection", async (socket) => {
   socket.on("set_config_option", async d => { if(!ws?.alive)return; try{const p={sessionId:d?.sessionId||ws.activeSessionId,configId:d.configId};if(d.valueType==="boolean"){p.type="boolean";p.value=d.value;}else p.value=d.value;const r=await ws.conn.setSessionConfigOption(p);if(r?.configOptions){ws.configOptions=r.configOptions;ws.send({type:"config_update",configOptions:ws.configOptions});}}catch(e){ws.send({type:"error",message:""+e});} });
   socket.on("create_session", async d => {
     if(!ws?.alive)return; const cwd=d?.cwd||COPILOT_CWD, title=d?.title||cwd.split("/").pop()||"Session";
-    try{ const sr=await ws.conn.newSession({cwd,mcpServers:[]}); const initModelId=sr.models?.currentModelId||sr.models?.availableModels?.[0]?.id||''; ws.sessions.set(sr.sessionId,{cwd,title,busy:false,queue:[],titleSet:!!d?.title,createdAt:Date.now(),modelId:initModelId,yoloLevel:0}); ws.activeSessionId=sr.sessionId;
+    try{ const sr=await ws.conn.newSession({cwd,mcpServers:[]}); const initModelId=sr.models?.currentModelId||sr.models?.availableModels?.[0]?.id||''; ws.sessions.set(sr.sessionId,{cwd,title,busy:false,queue:[],titleSet:!!d?.title,createdAt:Date.now(),lastActiveAt:Date.now(),messageCount:0,modelId:initModelId,yoloLevel:0}); ws.activeSessionId=sr.sessionId;
     if(sr.modes){ws.availableModes=sr.modes.availableModes||ws.availableModes;ws.currentModeId=sr.modes.currentModeId||ws.currentModeId;}
     if(sr.models){ws.availableModels=sr.models.availableModels||ws.availableModels;}
     ws.saveMeta(); ws.send({type:"session_created",sessionId:sr.sessionId,cwd,title,sessions:ws.sessionList(),modes:{availableModes:ws.availableModes,currentModeId:ws.currentModeId},models:{availableModels:ws.availableModels,currentModelId:initModelId},configOptions:ws.configOptions,yoloLevel:0}); }catch(e){ws.send({type:"error",message:""+e});}

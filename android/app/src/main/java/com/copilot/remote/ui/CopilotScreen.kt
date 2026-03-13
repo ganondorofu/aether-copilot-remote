@@ -88,7 +88,7 @@ fun CopilotScreen(
 
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: android.net.Uri? ->
         uri?.let {
             try {
@@ -753,7 +753,7 @@ fun CopilotScreen(
                 ) {
                     // Attach file button
                     IconButton(
-                        onClick = { filePickerLauncher.launch("*/*") },
+                        onClick = { try { filePickerLauncher.launch(arrayOf("*/*")) } catch (_: Exception) {} },
                         modifier = Modifier.size(36.dp),
                     ) {
                         Icon(Icons.Default.AttachFile, contentDescription = stringResource(R.string.cd_attach_file), modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1015,7 +1015,7 @@ fun NavigationDrawerContent(
             }
         } else {
             val sortedSessions = remember(sessions) {
-                sessions.sortedByDescending { it.createdAt }
+                sessions.sortedByDescending { if (it.lastActiveAt > 0) it.lastActiveAt else it.createdAt }
             }
             val dateContext = LocalContext.current
             val grouped = remember(sortedSessions) {
@@ -1754,7 +1754,7 @@ private fun groupSessionsByDate(
 
     val groups = linkedMapOf<String, MutableList<com.copilot.remote.network.CopilotWebSocket.SessionInfo>>()
     for (s in sessions) {
-        val ts = s.createdAt
+        val ts = if (s.lastActiveAt > 0) s.lastActiveAt else s.createdAt
         val label = when {
             ts >= todayStart -> context.getString(R.string.date_today)
             ts >= yesterdayStart -> context.getString(R.string.date_yesterday)
