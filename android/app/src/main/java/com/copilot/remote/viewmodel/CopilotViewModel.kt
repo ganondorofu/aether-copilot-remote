@@ -499,6 +499,7 @@ class CopilotViewModel : ViewModel() {
                     title = s.optString("title"),
                     active = s.optBoolean("active"),
                     busy = s.optBoolean("busy"),
+                    createdAt = s.optLong("createdAt", 0L),
                 )
             }
             _connection.update { it.copy(sessions = sessions) }
@@ -724,6 +725,7 @@ class CopilotViewModel : ViewModel() {
                     title = s.optString("title"),
                     active = s.optBoolean("active"),
                     busy = s.optBoolean("busy"),
+                    createdAt = s.optLong("createdAt", 0L),
                 )
             }
             _connection.update { it.copy(sessions = sessions) }

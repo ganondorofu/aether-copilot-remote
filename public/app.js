@@ -466,11 +466,34 @@ function updateBadge(status) {
 }
 
 // ===== SIDEBAR =====
+function sessionDateLabel(ts) {
+  if (!ts) return 'Older';
+  const now = new Date(), d = new Date(ts);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate()-7);
+  const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate()-30);
+  if (d >= today) return 'Today';
+  if (d >= yesterday) return 'Yesterday';
+  if (d >= weekAgo) return 'Previous 7 Days';
+  if (d >= monthAgo) return 'Previous 30 Days';
+  return d.toLocaleDateString(undefined, { year:'numeric', month:'long' });
+}
 function renderSidebar() {
   const list = $('sidebar-sessions');
   list.innerHTML = '';
   if (!S.sessions.length) { list.innerHTML = '<div class="sidebar-empty">No sessions yet</div>'; return; }
-  for (const s of S.sessions) {
+  const sorted = [...S.sessions].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  let lastLabel = '';
+  for (const s of sorted) {
+    const label = sessionDateLabel(s.createdAt);
+    if (label !== lastLabel) {
+      lastLabel = label;
+      const hdr = document.createElement('div');
+      hdr.className = 'session-date-header';
+      hdr.textContent = label;
+      list.appendChild(hdr);
+    }
     const div = document.createElement('div');
     div.className = 'session-item' + (s.sessionId === S.sid ? ' active' : '');
     div.innerHTML = `

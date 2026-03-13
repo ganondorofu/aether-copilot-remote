@@ -142,6 +142,7 @@ class Workspace {
   sessionList() {
     return [...this.sessions.entries()].map(([id, s]) => ({
       sessionId: id, cwd: s.cwd, title: s.title, active: id === this.activeSessionId, busy: s.busy,
+      createdAt: s.createdAt || Date.now(),
     }));
   }
   saveMeta() {
@@ -225,7 +226,7 @@ function setupProc(ws) {
       const cwd = first?.cwd || COPILOT_CWD;
       const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
       ws.sessions.clear(); ws.activeSessionId = sr.sessionId;
-      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true });
+      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true, createdAt: first?.createdAt || Date.now() });
       if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
       if (sr.models) { ws.availableModels = sr.models.availableModels||[]; ws.currentModelId = sr.models.currentModelId||""; }
       ws.alive = true; ws.saveMeta();
@@ -243,7 +244,7 @@ async function createWS(cwd) {
   if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
   if (sr.models) { ws.availableModels = sr.models.availableModels||[]; ws.currentModelId = sr.models.currentModelId||""; }
   if (sr.configOptions) ws.configOptions = sr.configOptions;
-  ws.sessions.set(ws.activeSessionId, { cwd, title: cwd.split("/").pop()||"Default", busy: false, queue: [], titleSet: false });
+  ws.sessions.set(ws.activeSessionId, { cwd, title: cwd.split("/").pop()||"Default", busy: false, queue: [], titleSet: false, createdAt: Date.now() });
   ws.alive = true; workspaces.set(ws.id, ws); ws.saveMeta();
   return ws;
 }
@@ -263,7 +264,7 @@ async function restoreWorkspace(savedId) {
     try {
       const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
       idMap.set(sMeta.sessionId, sr.sessionId);
-      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true });
+      ws.sessions.set(sr.sessionId, { cwd, title: sMeta.title || "Restored", busy: false, queue: [], titleSet: true, createdAt: sMeta.createdAt || Date.now() });
       if (!ws.activeSessionId) {
         ws.activeSessionId = sr.sessionId;
         if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
@@ -396,7 +397,7 @@ io.on("connection", async (socket) => {
   socket.on("set_config_option", async d => { if(!ws?.alive)return; try{const p={sessionId:d?.sessionId||ws.activeSessionId,configId:d.configId};if(d.valueType==="boolean"){p.type="boolean";p.value=d.value;}else p.value=d.value;const r=await ws.conn.setSessionConfigOption(p);if(r?.configOptions){ws.configOptions=r.configOptions;ws.send({type:"config_update",configOptions:ws.configOptions});}}catch(e){ws.send({type:"error",message:""+e});} });
   socket.on("create_session", async d => {
     if(!ws?.alive)return; const cwd=d?.cwd||COPILOT_CWD, title=d?.title||cwd.split("/").pop()||"Session";
-    try{ const sr=await ws.conn.newSession({cwd,mcpServers:[]}); ws.sessions.set(sr.sessionId,{cwd,title,busy:false,queue:[],titleSet:!!d?.title}); ws.activeSessionId=sr.sessionId;
+    try{ const sr=await ws.conn.newSession({cwd,mcpServers:[]}); ws.sessions.set(sr.sessionId,{cwd,title,busy:false,queue:[],titleSet:!!d?.title,createdAt:Date.now()}); ws.activeSessionId=sr.sessionId;
     if(sr.modes){ws.availableModes=sr.modes.availableModes||ws.availableModes;ws.currentModeId=sr.modes.currentModeId||ws.currentModeId;}
     if(sr.models){ws.availableModels=sr.models.availableModels||ws.availableModels;ws.currentModelId=sr.models.currentModelId||ws.currentModelId;}
     ws.saveMeta(); ws.send({type:"session_created",sessionId:sr.sessionId,cwd,title,sessions:ws.sessionList(),modes:{availableModes:ws.availableModes,currentModeId:ws.currentModeId},models:{availableModels:ws.availableModels,currentModelId:ws.currentModelId},configOptions:ws.configOptions}); }catch(e){ws.send({type:"error",message:""+e});}

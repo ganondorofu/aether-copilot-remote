@@ -873,7 +873,7 @@ fun NavigationDrawerContent(
 
         HorizontalDivider()
 
-        // Session list
+        // Session list grouped by date
         if (sessions.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -888,18 +888,35 @@ fun NavigationDrawerContent(
                 )
             }
         } else {
+            val sortedSessions = remember(sessions) {
+                sessions.sortedByDescending { it.createdAt }
+            }
+            val grouped = remember(sortedSessions) {
+                groupSessionsByDate(sortedSessions)
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                items(sessions.size) { index ->
-                    SessionListItem(
-                        session = sessions[index],
-                        isActive = sessions[index].sessionId == currentSessionId,
-                        onClick = { onSessionClick(sessions[index].sessionId) },
-                        onDelete = { onDeleteSession(sessions[index].sessionId) },
-                        canDelete = sessions.size > 1,
-                    )
+                grouped.forEach { (label, items) ->
+                    item {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                        )
+                    }
+                    items(items.size) { index ->
+                        SessionListItem(
+                            session = items[index],
+                            isActive = items[index].sessionId == currentSessionId,
+                            onClick = { onSessionClick(items[index].sessionId) },
+                            onDelete = { onDeleteSession(items[index].sessionId) },
+                            canDelete = sessions.size > 1,
+                        )
+                    }
                 }
             }
         }
@@ -1567,4 +1584,38 @@ fun NewSessionDialog(
             }
         },
     )
+}
+
+private fun groupSessionsByDate(
+    sessions: List<com.copilot.remote.network.CopilotWebSocket.SessionInfo>,
+): List<Pair<String, List<com.copilot.remote.network.CopilotWebSocket.SessionInfo>>> {
+    if (sessions.isEmpty()) return emptyList()
+    val cal = java.util.Calendar.getInstance()
+    cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+    cal.set(java.util.Calendar.MINUTE, 0)
+    cal.set(java.util.Calendar.SECOND, 0)
+    cal.set(java.util.Calendar.MILLISECOND, 0)
+    val todayStart = cal.timeInMillis
+    val yesterdayStart = todayStart - 86_400_000L
+    val weekAgoStart = todayStart - 7 * 86_400_000L
+    val monthAgoStart = todayStart - 30 * 86_400_000L
+
+    val groups = linkedMapOf<String, MutableList<com.copilot.remote.network.CopilotWebSocket.SessionInfo>>()
+    for (s in sessions) {
+        val ts = s.createdAt
+        val label = when {
+            ts >= todayStart -> "Today"
+            ts >= yesterdayStart -> "Yesterday"
+            ts >= weekAgoStart -> "Previous 7 Days"
+            ts >= monthAgoStart -> "Previous 30 Days"
+            ts > 0L -> {
+                val d = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+                val month = d.getDisplayName(java.util.Calendar.MONTH, java.util.Calendar.LONG, java.util.Locale.getDefault()) ?: ""
+                "$month ${d.get(java.util.Calendar.YEAR)}"
+            }
+            else -> "Older"
+        }
+        groups.getOrPut(label) { mutableListOf() }.add(s)
+    }
+    return groups.map { (k, v) -> k to v.toList() }
 }
