@@ -15,7 +15,7 @@ import * as store from "./lib/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
-const APP_VERSION = { versionCode: 6, versionName: "5.5.0" };
+const APP_VERSION = { versionCode: 7, versionName: "5.5.1" };
 const COPILOT_PATH = process.env.COPILOT_PATH || "copilot";
 const COPILOT_ARGS = (process.env.COPILOT_ARGS || "").split(" ").filter(Boolean);
 const COPILOT_CWD = process.env.COPILOT_CWD || os.homedir();
