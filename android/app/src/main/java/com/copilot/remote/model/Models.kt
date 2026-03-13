@@ -41,6 +41,7 @@ data class ModelInfo(
     val modelId: String,
     val name: String? = null,
     val description: String? = null,
+    val copilotUsage: String? = null,
 )
 
 @Serializable
@@ -252,6 +253,9 @@ data class UsageInfo(
     val inputTokens: Int? = null,
     val outputTokens: Int? = null,
     val totalCost: String? = null,
+    val percentRemaining: Int? = null,
+    val premiumRequestsUsed: Int? = null,
+    val premiumRequestsLimit: Int? = null,
 )
 
 // ── Authentication models ──

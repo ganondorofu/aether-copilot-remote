@@ -43,7 +43,8 @@ function toolIcon(kind) { return icon(TK[kind]||'tool', 16); }
 const S = {
   token: localStorage.getItem('aether-token'),
   wsId: localStorage.getItem('aether-workspace'),
-  sid: null, cwd: '', sessions: [], commands: [],
+  sid: localStorage.getItem('aether-session'),
+  cwd: '', sessions: [], commands: [],
   models: [], modes: [], configOptions: [],
   currentModelId: '', currentModeId: '',
   yoloLevel: 0, running: false, replaying: false,
@@ -67,6 +68,14 @@ function fmtSize(n) {
 function scrollDown() {
   if (S.replaying) return;
   const c = $('chat'); requestAnimationFrame(() => c.scrollTop = c.scrollHeight);
+}
+function initScrollBtn() {
+  const chat = $('chat'), btn = $('scroll-bottom-btn');
+  btn.onclick = () => { chat.scrollTop = chat.scrollHeight; };
+  chat.addEventListener('scroll', () => {
+    const near = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120;
+    btn.hidden = near;
+  });
 }
 function renderMd(text) {
   try {
@@ -152,7 +161,7 @@ function connect() {
   socket = io({ auth: { token: S.token }, reconnection: true, reconnectionDelay: 2000 });
   socket.on('connect', () => {
     S.connected = true;
-    socket.emit('auto_connect', { workspaceId: S.wsId, cwd: S.cwd || undefined });
+    socket.emit('auto_connect', { workspaceId: S.wsId, sessionId: S.sid, cwd: S.cwd || undefined });
   });
   socket.on('disconnect', () => { S.connected = false; updateBadge('disconnected'); });
   socket.on('connect_error', e => {
@@ -176,7 +185,7 @@ function handleMsg(d) {
       if (rc) { rc.el.innerHTML = ''; rc.agentEl = null; rc.agentBuf = ''; rc.thoughtEl = null; rc.thoughtBuf = ''; rc.tools.clear(); }
       break;
     }
-    case 'replay_end': S.replaying = false; S._replayingSid = null; break;
+    case 'replay_end': S.replaying = false; S._replayingSid = null; scrollDown(); break;
     case 'chunk': handleChunk(d); break;
     case 'tool': addToolCard(d); break;
     case 'tool_update': updateToolCard(d); break;
@@ -219,11 +228,13 @@ function handleInit(d) {
   if (d.models) { S.models = d.models.availableModels || []; S.currentModelId = d.models.currentModelId || ''; }
   S.configOptions = d.configOptions || [];
   localStorage.setItem('aether-workspace', S.wsId);
+  localStorage.setItem('aether-session', S.sid);
   updateBadge('connected');
   $('yolo-select').value = S.yoloLevel;
   renderModels(); renderModes(); renderSidebar(); updateHeader();
   ensureChat(S.sid);
   showActiveChat();
+  scrollDown();
 }
 
 function handleChunk(d) {
@@ -380,12 +391,14 @@ function handleDone(d) {
   }
   c.tools.clear();
   appendMsg(sid, `<div class="msg msg-done">${icon('check',14)} Done (${esc(d.stopReason||'completed')})</div>`);
+  if (d.usage) renderUsage(d.usage);
 }
 
 function handleSessionCreated(d) {
   S.sessions = d.sessions || S.sessions;
   S.sid = d.sessionId;
   S.cwd = d.cwd || S.cwd;
+  localStorage.setItem('aether-session', S.sid);
   if (d.modes) { S.modes = d.modes.availableModes || S.modes; S.currentModeId = d.modes.currentModeId || S.currentModeId; }
   if (d.models) { S.models = d.models.availableModels || S.models; S.currentModelId = d.models.currentModelId || ''; }
   if (d.yoloLevel !== undefined) { S.yoloLevel = d.yoloLevel; $('yolo-select').value = S.yoloLevel; }
@@ -397,11 +410,13 @@ function handleSessionSwitched(d) {
   S.sessions = d.sessions || S.sessions;
   S.sid = d.sessionId;
   S.cwd = d.cwd || S.cwd;
+  localStorage.setItem('aether-session', S.sid);
   // Per-session model & yolo
   if (d.models) { S.models = d.models.availableModels || S.models; S.currentModelId = d.models.currentModelId || ''; renderModels(); }
   if (d.yoloLevel !== undefined) { S.yoloLevel = d.yoloLevel; $('yolo-select').value = S.yoloLevel; }
   ensureChat(S.sid);
   showActiveChat(); renderSidebar(); updateHeader();
+  scrollDown();
 }
 function handleSessionDeleted(d) {
   S.sessions = d.sessions || S.sessions;
@@ -566,7 +581,7 @@ function renderModels() {
     const o = document.createElement('option');
     o.value = m.id;
     const mult = m._meta?.copilotUsage;
-    o.textContent = (m.name||m.id) + (mult != null ? ` (${mult}x)` : '');
+    o.textContent = (m.name||m.id) + (mult != null ? ` (${String(mult).replace(/x$/,'')}x)` : '');
     sel.appendChild(o);
   }
   sel.value = S.currentModelId;
@@ -585,11 +600,14 @@ function renderModes() {
 function renderUsage(u) {
   if (!u) return;
   const parts = [];
+  if (u.percentRemaining != null) parts.push(`Quota: ${u.percentRemaining}%`);
+  if (u.premiumRequestsUsed != null || u.premiumRequestsLimit != null) {
+    parts.push(`Premium: ${u.premiumRequestsUsed ?? '?'}/${u.premiumRequestsLimit ?? '?'}`);
+  }
   if (u.contextSize != null) parts.push(`ctx: ${(u.contextSize/1000).toFixed(0)}k`);
-  if (u.totalCost != null) parts.push(`cost: ${u.totalCost}`);
   if (u.inputTokens != null) parts.push(`in: ${u.inputTokens}`);
   if (u.outputTokens != null) parts.push(`out: ${u.outputTokens}`);
-  $('usage-display').textContent = parts.join(' | ');
+  $('usage-display').textContent = parts.join(' · ');
 }
 
 // ===== SETTINGS =====
@@ -851,6 +869,7 @@ function init() {
   });
 
   checkAuth();
+  initScrollBtn();
 }
 
 window.addEventListener('DOMContentLoaded', init);

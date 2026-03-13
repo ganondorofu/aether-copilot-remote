@@ -112,6 +112,13 @@ fun CopilotScreen(
         }
     }
 
+    // Scroll to bottom when switching sessions
+    LaunchedEffect(connection.sessionId) {
+        if (chatItems.isNotEmpty()) {
+            listState.scrollToItem(chatItems.size - 1)
+        }
+    }
+
     // Persist workspaceId when it changes (only save non-null values)
     LaunchedEffect(connection.workspaceId) {
         if (connection.workspaceId != null) {
@@ -259,8 +266,15 @@ fun CopilotScreen(
         ModalBottomSheet(onDismissRequest = { showModelSheet = false }) {
             Text("Select Model", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             models.forEach { model ->
+                val label = buildString {
+                    append(model.name ?: model.modelId)
+                    model.copilotUsage?.let {
+                        val num = it.replace("x", "")
+                        append(" (${num}x)")
+                    }
+                }
                 ListItem(
-                    headlineContent = { Text(model.name ?: model.modelId) },
+                    headlineContent = { Text(label) },
                     supportingContent = model.description?.let { { Text(it, maxLines = 1) } },
                     leadingContent = {
                         if (model.modelId == currentModel) {
@@ -699,14 +713,17 @@ fun CopilotScreen(
                 // Usage display
                 usage?.let { u ->
                     val parts = mutableListOf<String>()
+                    u.percentRemaining?.let { parts.add("Quota: $it%") }
+                    if (u.premiumRequestsUsed != null || u.premiumRequestsLimit != null) {
+                        parts.add("Premium: ${u.premiumRequestsUsed ?: "?"}/${u.premiumRequestsLimit ?: "?"}")
+                    }
                     u.contextSize?.let { parts.add("ctx: ${(it / 1000)}k") }
-                    u.totalCost?.let { parts.add("cost: $it") }
                     u.inputTokens?.let { parts.add("in: $it") }
                     u.outputTokens?.let { parts.add("out: $it") }
                     
                     if (parts.isNotEmpty()) {
                         Text(
-                            text = parts.joinToString(" | "),
+                            text = parts.joinToString(" · "),
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -760,6 +777,7 @@ fun CopilotScreen(
                 }
             }
 
+            Box(modifier = Modifier.weight(1f)) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -792,9 +810,27 @@ fun CopilotScreen(
                 }
             }
         }
+            // Scroll-to-bottom button
+            val scope = rememberCoroutineScope()
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isAtBottom.value && chatItems.isNotEmpty(),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                SmallFloatingActionButton(
+                    onClick = {
+                        scope.launch { listState.scrollToItem(chatItems.size - 1) }
+                    },
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Scroll to bottom")
+                }
+            }
         }
     }
     }
+}
 }
 
 // ── Navigation Drawer ──
@@ -898,7 +934,7 @@ fun NavigationDrawerContent(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                grouped.forEach { (label, items) ->
+                grouped.forEach { (label, groupSessions) ->
                     item {
                         Text(
                             text = label,
@@ -908,12 +944,12 @@ fun NavigationDrawerContent(
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
                         )
                     }
-                    items(items.size) { index ->
+                    items(groupSessions.size) { index ->
                         SessionListItem(
-                            session = items[index],
-                            isActive = items[index].sessionId == currentSessionId,
-                            onClick = { onSessionClick(items[index].sessionId) },
-                            onDelete = { onDeleteSession(items[index].sessionId) },
+                            session = groupSessions[index],
+                            isActive = groupSessions[index].sessionId == currentSessionId,
+                            onClick = { onSessionClick(groupSessions[index].sessionId) },
+                            onDelete = { onDeleteSession(groupSessions[index].sessionId) },
                             canDelete = sessions.size > 1,
                         )
                     }

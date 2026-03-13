@@ -298,10 +298,11 @@ async function restoreWorkspace(savedId) {
   return ws;
 }
 
-function sendInit(ws, socket, isReconnect) {
-  const activeSess = ws.sessions.get(ws.activeSessionId);
+function sendInit(ws, socket, isReconnect, preferredSid) {
+  const sid = (preferredSid && ws.sessions.has(preferredSid)) ? preferredSid : ws.activeSessionId;
+  const activeSess = ws.sessions.get(sid);
   socket.emit("msg", {
-    type: "init", workspaceId: ws.id, sessionId: ws.activeSessionId,
+    type: "init", workspaceId: ws.id, sessionId: sid,
     modes: { availableModes: ws.availableModes, currentModeId: ws.currentModeId },
     models: { availableModels: ws.availableModels, currentModelId: activeSess?.modelId || '' },
     configOptions: ws.configOptions, cwd: activeSess?.cwd||COPILOT_CWD,
@@ -346,16 +347,16 @@ app.get("/api/download/apk", (req, res) => {
 io.on("connection", async (socket) => {
   let ws = null;
   socket.on("auto_connect", async d => {
-    const id = d?.workspaceId;
+    const id = d?.workspaceId; const prefSid = d?.sessionId;
     // Try requested workspace in memory first
-    if (id) { const t = workspaces.get(id); if (t?.alive) { ws = t; ws.attach(socket); sendInit(ws, socket, true); return; } }
+    if (id) { const t = workspaces.get(id); if (t?.alive) { ws = t; ws.attach(socket); sendInit(ws, socket, true, prefSid); return; } }
     // Try to restore from disk
     if (id && !workspaces.has(id)) {
-      try { const restored = await restoreWorkspace(id); if (restored) { ws = restored; ws.attach(socket); sendInit(ws, socket, true); return; } }
+      try { const restored = await restoreWorkspace(id); if (restored) { ws = restored; ws.attach(socket); sendInit(ws, socket, true, prefSid); return; } }
       catch (e) { console.error("Restore failed:", e); }
     }
     // Attach to any existing alive workspace
-    for (const [, t] of workspaces) { if (t.alive) { ws = t; ws.attach(socket); sendInit(ws, socket, true); return; } }
+    for (const [, t] of workspaces) { if (t.alive) { ws = t; ws.attach(socket); sendInit(ws, socket, true, prefSid); return; } }
     // No workspace exists, create new
     try { ws = await createWS(d?.cwd||COPILOT_CWD); ws.attach(socket); sendInit(ws, socket, false); }
     catch (e) { socket.emit("msg", { type: "error", message: "Start failed: "+e }); }
@@ -446,7 +447,7 @@ async function drain(ws, sid) {
     if (text) prompt.push({ type: "text", text });
     for (const a of attachments) if (a.type==="image") prompt.push({ type:"image", data:a.data, mimeType:a.mimeType });
     const r = await ws.conn.prompt({ sessionId: sid, prompt });
-    ws.send({type:"done",sessionId:sid,stopReason:r.stopReason});
+    ws.send({type:"done",sessionId:sid,stopReason:r.stopReason,usage:r.usage||null});
   } catch(e) { ws.send({type:"error",sessionId:sid,message:String(e)}); }
   finally { s.busy=false; ws.send({type:"prompt_end",sessionId:sid}); if(s.queue.length) setImmediate(()=>drain(ws,sid)); }
 }

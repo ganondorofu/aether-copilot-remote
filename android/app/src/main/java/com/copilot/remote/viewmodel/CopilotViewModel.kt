@@ -400,6 +400,11 @@ class CopilotViewModel : ViewModel() {
                         val stopReason = event.data.optString("stopReason", "completed")
                         val sid = resolveTargetSid(event.data)
                         if (sid != null) addChatItem(ChatItem.Done(stopReason), sid)
+                        // Parse usage from done event
+                        val usageObj = event.data.optJSONObject("usage")
+                        if (usageObj != null) {
+                            try { _usage.value = json.decodeFromString<UsageInfo>(usageObj.toString()) } catch (_: Exception) {}
+                        }
                     }
                     is CopilotWebSocket.Event.Error -> {
                         val sid = resolveTargetSid(null)
@@ -531,12 +536,7 @@ class CopilotViewModel : ViewModel() {
             if (modelsArray != null) {
                 _models.value = (0 until modelsArray.length()).mapNotNull { i ->
                     try {
-                        val m = modelsArray.getJSONObject(i)
-                        ModelInfo(
-                            modelId = m.optString("modelId"),
-                            name = m.optString("name"),
-                            description = m.optString("description")
-                        )
+                        parseModelInfo(modelsArray.getJSONObject(i))
                     } catch (_: Exception) { null }
                 }
             }
@@ -744,12 +744,7 @@ class CopilotViewModel : ViewModel() {
             if (modelsArray != null) {
                 _models.value = (0 until modelsArray.length()).mapNotNull { i ->
                     try {
-                        val m = modelsArray.getJSONObject(i)
-                        ModelInfo(
-                            modelId = m.optString("modelId"),
-                            name = m.optString("name"),
-                            description = m.optString("description")
-                        )
+                        parseModelInfo(modelsArray.getJSONObject(i))
                     } catch (_: Exception) { null }
                 }
             }
@@ -757,6 +752,17 @@ class CopilotViewModel : ViewModel() {
         if (data.has("yoloLevel")) {
             _yoloLevel.value = data.optInt("yoloLevel", 0)
         }
+    }
+
+    private fun parseModelInfo(m: org.json.JSONObject): ModelInfo {
+        val meta = m.optJSONObject("_meta")
+        val usage = meta?.optString("copilotUsage", null.toString())?.takeIf { it != "null" }
+        return ModelInfo(
+            modelId = m.optString("modelId"),
+            name = m.optString("name"),
+            description = m.optString("description"),
+            copilotUsage = usage,
+        )
     }
 
     private fun handleUsage(data: org.json.JSONObject) {
@@ -790,12 +796,7 @@ class CopilotViewModel : ViewModel() {
         if (modelsArray != null) {
             _models.value = (0 until modelsArray.length()).mapNotNull { i ->
                 try {
-                    val m = modelsArray.getJSONObject(i)
-                    ModelInfo(
-                        modelId = m.optString("modelId"),
-                        name = m.optString("name"),
-                        description = m.optString("description")
-                    )
+                    parseModelInfo(modelsArray.getJSONObject(i))
                 } catch (_: Exception) { null }
             }
         }
