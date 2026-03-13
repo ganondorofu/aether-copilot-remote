@@ -340,7 +340,7 @@ app.get("/api/download/apk", (req, res) => {
   if (!authMod.needsSetup() && !authMod.verifyToken(t)) return res.status(401).json({ error: "Unauthorized" });
   // Check multiple possible APK locations
   const candidates = [
-    path.join(__dirname, "data", "app-release.apk"),
+    path.join(__dirname, "data", "aether.apk"),
     path.join(__dirname, "android", "app", "build", "outputs", "apk", "release", "app-release.apk"),
   ];
   for (const p of candidates) {
