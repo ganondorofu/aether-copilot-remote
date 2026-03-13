@@ -681,6 +681,8 @@ class CopilotViewModel : ViewModel() {
         
         // Update sessions list
         parseSessions(data)
+        // Per-session model & yolo
+        parsePerSessionModelYolo(data)
     }
 
     private fun handleSessionSwitched(data: org.json.JSONObject) {
@@ -694,6 +696,8 @@ class CopilotViewModel : ViewModel() {
         
         // Update sessions list
         parseSessions(data)
+        // Per-session model & yolo
+        parsePerSessionModelYolo(data)
     }
 
     private fun handleSessionDeleted(data: org.json.JSONObject) {
@@ -732,6 +736,29 @@ class CopilotViewModel : ViewModel() {
         }
     }
 
+    private fun parsePerSessionModelYolo(data: org.json.JSONObject) {
+        val modelsObj = data.optJSONObject("models")
+        if (modelsObj != null) {
+            _currentModel.value = modelsObj.optString("currentModelId", "")
+            val modelsArray = modelsObj.optJSONArray("availableModels")
+            if (modelsArray != null) {
+                _models.value = (0 until modelsArray.length()).mapNotNull { i ->
+                    try {
+                        val m = modelsArray.getJSONObject(i)
+                        ModelInfo(
+                            modelId = m.optString("modelId"),
+                            name = m.optString("name"),
+                            description = m.optString("description")
+                        )
+                    } catch (_: Exception) { null }
+                }
+            }
+        }
+        if (data.has("yoloLevel")) {
+            _yoloLevel.value = data.optInt("yoloLevel", 0)
+        }
+    }
+
     private fun handleUsage(data: org.json.JSONObject) {
         val usageObj = data.optJSONObject("usage")
         if (usageObj != null) {
@@ -742,7 +769,11 @@ class CopilotViewModel : ViewModel() {
     }
 
     private fun handleYoloUpdate(data: org.json.JSONObject) {
-        _yoloLevel.value = data.optInt("level", 0)
+        val sid = data.optString("sessionId", "")
+        val currentSid = _connection.value.sessionId
+        if (sid.isEmpty() || sid == currentSid) {
+            _yoloLevel.value = data.optInt("level", 0)
+        }
     }
 
     private fun handleModeUpdate(data: org.json.JSONObject) {
@@ -750,7 +781,11 @@ class CopilotViewModel : ViewModel() {
     }
 
     private fun handleModelUpdate(data: org.json.JSONObject) {
-        _currentModel.value = data.optString("modelId", "")
+        val sid = data.optString("sessionId", "")
+        val currentSid = _connection.value.sessionId
+        if (sid.isEmpty() || sid == currentSid) {
+            _currentModel.value = data.optString("modelId", "")
+        }
         val modelsArray = data.optJSONArray("availableModels")
         if (modelsArray != null) {
             _models.value = (0 until modelsArray.length()).mapNotNull { i ->

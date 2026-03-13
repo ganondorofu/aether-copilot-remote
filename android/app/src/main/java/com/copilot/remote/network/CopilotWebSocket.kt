@@ -189,6 +189,7 @@ class CopilotWebSocket(
     fun setYoloLevel(level: Int) {
         socket?.emit("set_yolo", JSONObject().apply {
             put("level", level)
+            put("sessionId", activeSessionId ?: JSONObject.NULL)
         })
     }
 

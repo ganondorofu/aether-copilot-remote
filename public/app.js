@@ -170,13 +170,13 @@ function handleMsg(d) {
     case 'init': handleInit(d); break;
     case 'replay_start': {
       S.replaying = true;
-      // Clear the target session's chat before replay refills it
-      const rSid = d.sessionId || S.sid;
+      S._replayingSid = d.sessionId || S.sid;
+      const rSid = S._replayingSid;
       const rc = chats.get(rSid);
       if (rc) { rc.el.innerHTML = ''; rc.agentEl = null; rc.agentBuf = ''; rc.thoughtEl = null; rc.thoughtBuf = ''; rc.tools.clear(); }
       break;
     }
-    case 'replay_end': S.replaying = false; break;
+    case 'replay_end': S.replaying = false; S._replayingSid = null; break;
     case 'chunk': handleChunk(d); break;
     case 'tool': addToolCard(d); break;
     case 'tool_update': updateToolCard(d); break;
@@ -184,9 +184,9 @@ function handleMsg(d) {
     case 'commands': S.commands = d.commands || []; break;
     case 'mode_update': S.currentModeId = d.modeId || ''; renderModes(); break;
     case 'model_update':
-      S.currentModelId = d.modelId || '';
       if (d.availableModels) S.models = d.availableModels;
-      renderModels(); break;
+      if (!d.sessionId || d.sessionId === S.sid) { S.currentModelId = d.modelId || ''; renderModels(); }
+      break;
     case 'config_update': S.configOptions = d.configOptions || []; renderSettings(); break;
     case 'usage': renderUsage(d.usage); break;
     case 'permission': showPermission(d); break;
@@ -203,7 +203,7 @@ function handleMsg(d) {
     case 'status': appendMsg(d.sessionId, `<div class="msg msg-status">${esc(d.message||'')}</div>`); break;
     case 'auto_approved': appendMsg(d.sessionId, `<div class="msg msg-auto-approved">${icon('check',14)} Auto-approved: ${esc(d.title||'')} (${esc(d.kind||'')})</div>`); break;
     case 'stderr': break; // suppress
-    case 'yolo_update': S.yoloLevel = d.level; $('yolo-select').value = d.level; break;
+    case 'yolo_update': if (!d.sessionId || d.sessionId === S.sid) { S.yoloLevel = d.level; $('yolo-select').value = d.level; } break;
     case 'dir_listing': renderDirListing(d); break;
   }
   } catch (e) { console.error('handleMsg error:', e, d); }
@@ -387,7 +387,8 @@ function handleSessionCreated(d) {
   S.sid = d.sessionId;
   S.cwd = d.cwd || S.cwd;
   if (d.modes) { S.modes = d.modes.availableModes || S.modes; S.currentModeId = d.modes.currentModeId || S.currentModeId; }
-  if (d.models) { S.models = d.models.availableModels || S.models; S.currentModelId = d.models.currentModelId || S.currentModelId; }
+  if (d.models) { S.models = d.models.availableModels || S.models; S.currentModelId = d.models.currentModelId || ''; }
+  if (d.yoloLevel !== undefined) { S.yoloLevel = d.yoloLevel; $('yolo-select').value = S.yoloLevel; }
   if (d.configOptions) S.configOptions = d.configOptions;
   ensureChat(S.sid);
   showActiveChat(); renderSidebar(); updateHeader(); renderModels(); renderModes();
@@ -396,6 +397,9 @@ function handleSessionSwitched(d) {
   S.sessions = d.sessions || S.sessions;
   S.sid = d.sessionId;
   S.cwd = d.cwd || S.cwd;
+  // Per-session model & yolo
+  if (d.models) { S.models = d.models.availableModels || S.models; S.currentModelId = d.models.currentModelId || ''; renderModels(); }
+  if (d.yoloLevel !== undefined) { S.yoloLevel = d.yoloLevel; $('yolo-select').value = S.yoloLevel; }
   ensureChat(S.sid);
   showActiveChat(); renderSidebar(); updateHeader();
 }
@@ -824,8 +828,8 @@ function init() {
     body.style.display = body.style.display === 'none' ? '' : 'none';
     $('plan-toggle').innerHTML = icon(body.style.display === 'none' ? 'chevRight' : 'chevDown');
   };
-  $('model-select').onchange = (e) => { if (socket) socket.emit('set_model', { modelId: e.target.value }); };
-  $('yolo-select').onchange = (e) => { if (socket) socket.emit('set_yolo', { level: Number(e.target.value) }); };
+  $('model-select').onchange = (e) => { if (socket) socket.emit('set_model', { sessionId: S.sid, modelId: e.target.value }); };
+  $('yolo-select').onchange = (e) => { if (socket) socket.emit('set_yolo', { sessionId: S.sid, level: Number(e.target.value) }); };
   $('logout-btn').onclick = async () => {
     await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + S.token } }).catch(() => {});
     S.token = null; localStorage.removeItem('aether-token'); localStorage.removeItem('aether-workspace');
