@@ -18,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.copilot.remote.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -230,7 +232,7 @@ fun CopilotScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Spacer(Modifier.height(16.dp))
-                Text("Connecting...", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.connecting), style = MaterialTheme.typography.bodyMedium)
             }
         }
         return
@@ -264,7 +266,7 @@ fun CopilotScreen(
     // Model bottom sheet
     if (showModelSheet) {
         ModalBottomSheet(onDismissRequest = { showModelSheet = false }) {
-            Text("Select Model", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Text(stringResource(R.string.select_model), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             models.forEach { model ->
                 val label = buildString {
                     append(model.name ?: model.modelId)
@@ -294,7 +296,7 @@ fun CopilotScreen(
     // Command bottom sheet
     if (showCommandSheet) {
         ModalBottomSheet(onDismissRequest = { showCommandSheet = false }) {
-            Text("Slash Commands", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Text(stringResource(R.string.slash_commands), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             commands.forEach { cmd ->
                 ListItem(
                     headlineContent = { Text("/${cmd.name}", color = MaterialTheme.colorScheme.primary) },
@@ -312,12 +314,12 @@ fun CopilotScreen(
     // Settings bottom sheet
     if (showSettingsSheet) {
         ModalBottomSheet(onDismissRequest = { showSettingsSheet = false }) {
-            Text("Settings", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             
             // App Lock toggle
             ListItem(
-                headlineContent = { Text("App Lock") },
-                supportingContent = { Text("Require login each time app starts", fontSize = 12.sp) },
+                headlineContent = { Text(stringResource(R.string.app_lock)) },
+                supportingContent = { Text(stringResource(R.string.app_lock_desc), fontSize = 12.sp) },
                 trailingContent = {
                     Switch(
                         checked = appLockEnabled?.value ?: false,
@@ -331,7 +333,7 @@ fun CopilotScreen(
 
             if (configOptions.isEmpty()) {
                 Text(
-                    "No configuration options available",
+                    stringResource(R.string.no_config_options),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp)
@@ -455,7 +457,7 @@ fun CopilotScreen(
             ) {
                 Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Sign Out")
+                Text(stringResource(R.string.auth_sign_out))
             }
             Spacer(Modifier.height(32.dp))
         }
@@ -488,7 +490,7 @@ fun CopilotScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("△", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
-                            Text("Aether", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.app_name), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             // Status badge
                             Surface(
                                 shape = CircleShape,
@@ -511,7 +513,7 @@ fun CopilotScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.cd_menu))
                     }
                 },
                 actions = {
@@ -531,11 +533,11 @@ fun CopilotScreen(
                             ) {
                                 Text(
                                     text = when (yoloLevel) {
-                                        0 -> "Normal"
-                                        1 -> "Trust reads"
-                                        2 -> "Trust most"
-                                        3 -> "YOLO"
-                                        else -> "Normal"
+                                        0 -> stringResource(R.string.yolo_normal)
+                                        1 -> stringResource(R.string.yolo_trust_reads)
+                                        2 -> stringResource(R.string.yolo_trust_most)
+                                        3 -> stringResource(R.string.yolo_yolo)
+                                        else -> stringResource(R.string.yolo_normal)
                                     },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
@@ -543,7 +545,7 @@ fun CopilotScreen(
                                 )
                                 Icon(
                                     Icons.Default.ArrowDropDown,
-                                    contentDescription = "Select YOLO Level",
+                                    contentDescription = stringResource(R.string.cd_select_yolo),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -554,10 +556,10 @@ fun CopilotScreen(
                             onDismissRequest = { showYoloMenu = false },
                         ) {
                             listOf(
-                                0 to "Normal",
-                                1 to "Trust reads",
-                                2 to "Trust most",
-                                3 to "YOLO",
+                                0 to stringResource(R.string.yolo_normal),
+                                1 to stringResource(R.string.yolo_trust_reads),
+                                2 to stringResource(R.string.yolo_trust_most),
+                                3 to stringResource(R.string.yolo_yolo),
                             ).forEach { (level, label) ->
                                 DropdownMenuItem(
                                     text = { 
@@ -602,25 +604,25 @@ fun CopilotScreen(
                     IconButton(onClick = onThemeToggle) {
                         Icon(
                             Icons.Default.LightMode, // Moon for dark theme, Sun for light
-                            contentDescription = "Toggle Theme"
+                            contentDescription = stringResource(R.string.cd_toggle_theme)
                         )
                     }
                     // Settings button
                     IconButton(onClick = { showSettingsSheet = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.cd_settings))
                     }
                     // Attach file button (TODO: implement file picker)
                     IconButton(onClick = { 
                         // TODO: Implement file attachment with Activity Result API
                     }) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Attach File")
+                        Icon(Icons.Default.AttachFile, contentDescription = stringResource(R.string.cd_attach_file))
                     }
                     // Reconnect
                     if (!connection.connected) {
                         IconButton(onClick = { 
                             // Reconnect not implemented in this version
                         }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Reconnect")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_reconnect))
                         }
                     }
                 },
@@ -675,7 +677,7 @@ fun CopilotScreen(
                         value = promptText,
                         onValueChange = { promptText = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("メッセージを入力…", fontSize = 14.sp) },
+                        placeholder = { Text(stringResource(R.string.message_placeholder), fontSize = 14.sp) },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                         maxLines = 4,
                         shape = RoundedCornerShape(20.dp),
@@ -694,7 +696,7 @@ fun CopilotScreen(
                                 containerColor = MaterialTheme.colorScheme.error,
                             ),
                         ) {
-                            Icon(Icons.Default.Stop, contentDescription = "Cancel")
+                            Icon(Icons.Default.Stop, contentDescription = stringResource(R.string.cd_cancel))
                         }
                     } else {
                         FilledIconButton(
@@ -707,7 +709,7 @@ fun CopilotScreen(
                             modifier = Modifier.size(42.dp),
                             enabled = promptText.isNotBlank() && connection.connected,
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.cd_send))
                         }
                     }
                 }
@@ -715,9 +717,9 @@ fun CopilotScreen(
                 // Usage display
                 usage?.let { u ->
                     val parts = mutableListOf<String>()
-                    u.percentRemaining?.let { parts.add("Quota: $it%") }
+                    u.percentRemaining?.let { parts.add(stringResource(R.string.usage_quota, it)) }
                     if (u.premiumRequestsUsed != null || u.premiumRequestsLimit != null) {
-                        parts.add("Premium: ${u.premiumRequestsUsed ?: "?"}/${u.premiumRequestsLimit ?: "?"}")
+                        parts.add(stringResource(R.string.usage_premium, u.premiumRequestsUsed ?: "?", u.premiumRequestsLimit ?: "?"))
                     }
                     u.contextSize?.let { parts.add("ctx: ${(it / 1000)}k") }
                     u.inputTokens?.let { parts.add("in: $it") }
@@ -769,10 +771,10 @@ fun CopilotScreen(
                         }
                         if (!updateInfo.downloading) {
                             TextButton(onClick = { vm.dismissUpdate() }) {
-                                Text("Later", fontSize = 12.sp)
+                                Text(stringResource(R.string.later), fontSize = 12.sp)
                             }
                             TextButton(onClick = { vm.downloadAndInstallUpdate(context, storedToken) }) {
-                                Text("Update", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.update), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -826,7 +828,7 @@ fun CopilotScreen(
                     },
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Scroll to bottom")
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.cd_scroll_bottom))
                 }
             }
         }
@@ -872,7 +874,7 @@ fun NavigationDrawerContent(
                 }
                 Column {
                     Text(
-                        "Aether",
+                        stringResource(R.string.app_name),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
@@ -886,7 +888,7 @@ fun NavigationDrawerContent(
                             modifier = Modifier.size(6.dp),
                         ) {}
                         Text(
-                            if (connected) "Connected" else "Disconnected",
+                            if (connected) stringResource(R.string.connected) else stringResource(R.string.disconnected),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -906,7 +908,7 @@ fun NavigationDrawerContent(
         ) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("New Session")
+            Text(stringResource(R.string.new_session))
         }
 
         HorizontalDivider()
@@ -920,7 +922,7 @@ fun NavigationDrawerContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "No sessions yet",
+                    stringResource(R.string.no_sessions),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -929,8 +931,9 @@ fun NavigationDrawerContent(
             val sortedSessions = remember(sessions) {
                 sessions.sortedByDescending { it.createdAt }
             }
+            val dateContext = LocalContext.current
             val grouped = remember(sortedSessions) {
-                groupSessionsByDate(sortedSessions)
+                groupSessionsByDate(sortedSessions, dateContext)
             }
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -1049,7 +1052,7 @@ fun SessionListItem(
                     ) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "Delete",
+                            contentDescription = stringResource(R.string.cd_delete),
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1103,7 +1106,7 @@ fun ThoughtBubble(text: String) {
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
         ) {
             Text(
-                "💭 ${if (expanded) "Thinking ▾" else "Thinking… (tap to expand)"}",
+                if (expanded) stringResource(R.string.thinking_expanded) else stringResource(R.string.thinking_collapsed),
                 fontSize = 12.sp,
                 color = Color(0xFFBC8CFF),
             )
@@ -1165,7 +1168,7 @@ fun ToolCallCard(tool: ChatItem.ToolCall) {
                 }
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1342,7 +1345,7 @@ fun PermissionDialog(
                 OutlinedTextField(
                     value = feedbackText,
                     onValueChange = { feedbackText = it },
-                    label = { Text("Reject with feedback…") },
+                    label = { Text(stringResource(R.string.reject_feedback)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -1361,7 +1364,7 @@ fun PermissionDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Reject with feedback")
+                    Text(stringResource(R.string.reject_with_feedback))
                 }
             }
         },
@@ -1389,12 +1392,12 @@ fun SetupScreen(
         Text("△", fontSize = 48.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Aether",
+            stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            "Create your account to get started",
+            stringResource(R.string.auth_setup_subtitle),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1403,7 +1406,7 @@ fun SetupScreen(
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
-            label = { Text("Server URL") },
+            label = { Text(stringResource(R.string.auth_server_url)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -1411,7 +1414,7 @@ fun SetupScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username") },
+            label = { Text(stringResource(R.string.auth_username)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -1419,7 +1422,7 @@ fun SetupScreen(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password (min 6 chars)") },
+            label = { Text(stringResource(R.string.auth_password_min)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             visualTransformation = PasswordVisualTransformation(),
@@ -1436,7 +1439,7 @@ fun SetupScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = url.isNotBlank() && username.isNotBlank() && password.length >= 6,
         ) {
-            Text("Create Account")
+            Text(stringResource(R.string.auth_create_account))
         }
     }
 }
@@ -1475,12 +1478,12 @@ fun LoginScreen(
         Text("△", fontSize = 48.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Aether",
+            stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            "Sign in to continue",
+            stringResource(R.string.auth_login_subtitle),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1489,7 +1492,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = url,
             onValueChange = { url = it; testResult = null },
-            label = { Text("Server URL") },
+            label = { Text(stringResource(R.string.auth_server_url)) },
             placeholder = { Text("http://192.168.x.x:8787") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -1538,7 +1541,7 @@ fun LoginScreen(
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
             }
-            Text("Test Connection")
+            Text(stringResource(R.string.auth_test_connection))
         }
         
         if (testResult != null) {
@@ -1554,7 +1557,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username") },
+            label = { Text(stringResource(R.string.auth_username)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -1562,7 +1565,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text(stringResource(R.string.auth_password)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             visualTransformation = PasswordVisualTransformation(),
@@ -1579,7 +1582,7 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = url.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
         ) {
-            Text("Sign In")
+            Text(stringResource(R.string.auth_sign_in))
         }
     }
 }
@@ -1593,18 +1596,18 @@ fun NewSessionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Session") },
+        title = { Text(stringResource(R.string.new_session)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Specify a working directory for this session.",
+                    stringResource(R.string.new_session_desc),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = cwd,
                     onValueChange = { cwd = it },
-                    label = { Text("Working Directory") },
+                    label = { Text(stringResource(R.string.working_directory)) },
                     placeholder = { Text("/home/user/project") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -1613,12 +1616,12 @@ fun NewSessionDialog(
         },
         confirmButton = {
             Button(onClick = { onCreate(cwd.trim()) }) {
-                Text("Create")
+                Text(stringResource(R.string.create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         },
     )
@@ -1626,6 +1629,7 @@ fun NewSessionDialog(
 
 private fun groupSessionsByDate(
     sessions: List<com.copilot.remote.network.CopilotWebSocket.SessionInfo>,
+    context: android.content.Context,
 ): List<Pair<String, List<com.copilot.remote.network.CopilotWebSocket.SessionInfo>>> {
     if (sessions.isEmpty()) return emptyList()
     val cal = java.util.Calendar.getInstance()
@@ -1642,16 +1646,16 @@ private fun groupSessionsByDate(
     for (s in sessions) {
         val ts = s.createdAt
         val label = when {
-            ts >= todayStart -> "Today"
-            ts >= yesterdayStart -> "Yesterday"
-            ts >= weekAgoStart -> "Previous 7 Days"
-            ts >= monthAgoStart -> "Previous 30 Days"
+            ts >= todayStart -> context.getString(R.string.date_today)
+            ts >= yesterdayStart -> context.getString(R.string.date_yesterday)
+            ts >= weekAgoStart -> context.getString(R.string.date_prev_7)
+            ts >= monthAgoStart -> context.getString(R.string.date_prev_30)
             ts > 0L -> {
                 val d = java.util.Calendar.getInstance().apply { timeInMillis = ts }
                 val month = d.getDisplayName(java.util.Calendar.MONTH, java.util.Calendar.LONG, java.util.Locale.getDefault()) ?: ""
                 "$month ${d.get(java.util.Calendar.YEAR)}"
             }
-            else -> "Older"
+            else -> context.getString(R.string.date_older)
         }
         groups.getOrPut(label) { mutableListOf() }.add(s)
     }

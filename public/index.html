@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+  <script src="/i18n.js"></script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='8' r='3' fill='%235b8def'/><circle cx='8' cy='24' r='3' fill='%235b8def'/><circle cx='24' cy='24' r='3' fill='%235b8def'/><path d='M16 11L8 21M16 11l8 10M11 24h10' stroke='%235b8def' stroke-width='2' fill='none'/></svg>" />
 </head>
 <body>
@@ -51,6 +52,7 @@
           <span class="status-dot" id="status-dot"></span>
         </div>
         <div class="sidebar-actions">
+          <button class="icon-btn icon-btn-sm" id="lang-btn" title="Language">EN</button>
           <button class="icon-btn icon-btn-sm" id="theme-btn" title="Theme"></button>
           <button class="icon-btn icon-btn-sm" id="settings-btn" title="Settings"></button>
           <button class="icon-btn icon-btn-sm sidebar-new-btn" id="session-add-btn" title="New session"></button>

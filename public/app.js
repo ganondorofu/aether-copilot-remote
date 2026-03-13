@@ -115,16 +115,16 @@ async function checkAuth() {
     $('auth-overlay').style.display = '';
     $('app').style.display = 'none';
     if (d.status === 'setup') {
-      $('auth-subtitle').textContent = 'Create your account to get started';
-      $('auth-submit').textContent = 'Create Account';
+      $('auth-subtitle').textContent = t('auth_subtitle_setup');
+      $('auth-submit').textContent = t('auth_submit_setup');
       $('auth-form').dataset.mode = 'setup';
     } else {
-      $('auth-subtitle').textContent = 'Sign in to continue';
-      $('auth-submit').textContent = 'Sign In';
+      $('auth-subtitle').textContent = t('auth_subtitle_login');
+      $('auth-submit').textContent = t('auth_submit_login');
       $('auth-form').dataset.mode = 'login';
     }
   } catch (e) {
-    $('auth-error').textContent = 'Connection error: ' + e.message;
+    $('auth-error').textContent = t('auth_error_conn') + e.message;
   }
 }
 async function doAuth(e) {
@@ -141,12 +141,12 @@ async function doAuth(e) {
       body: JSON.stringify({ username, password }),
     });
     const d = await r.json();
-    if (!r.ok) { $('auth-error').textContent = d.error || 'Failed'; return; }
+    if (!r.ok) { $('auth-error').textContent = d.error || t('auth_error_fail'); return; }
     S.token = d.token;
     localStorage.setItem('aether-token', d.token);
     showApp();
   } catch (e) {
-    $('auth-error').textContent = 'Error: ' + e.message;
+    $('auth-error').textContent = t('auth_error_prefix') + e.message;
   } finally {
     $('auth-submit').disabled = false;
   }
@@ -212,7 +212,7 @@ function handleMsg(d) {
     case 'user_message': appendMsg(d.sessionId, `<div class="msg msg-user">${esc(d.text||'')}</div>`); break;
     case 'error': appendMsg(d.sessionId, `<div class="msg msg-error">${esc(d.message||'Error')}</div>`); break;
     case 'status': appendMsg(d.sessionId, `<div class="msg msg-status">${esc(d.message||'')}</div>`); break;
-    case 'auto_approved': appendMsg(d.sessionId, `<div class="msg msg-auto-approved">${icon('check',14)} Auto-approved: ${esc(d.title||'')} (${esc(d.kind||'')})</div>`); break;
+    case 'auto_approved': appendMsg(d.sessionId, `<div class="msg msg-auto-approved">${icon('check',14)} ${esc(t('auto_approved', d.title||'', d.kind||''))}</div>`); break;
     case 'stderr': break; // suppress
     case 'yolo_update': if (!d.sessionId || d.sessionId === S.sid) { S.yoloLevel = d.level; $('yolo-select').value = d.level; } break;
     case 'dir_listing': renderDirListing(d); break;
@@ -258,7 +258,7 @@ function handleChunk(d) {
       c.thoughtBuf = '';
       const div = document.createElement('div');
       div.className = 'msg msg-thought';
-      div.innerHTML = `<button class="thought-toggle">${icon('bulb',14)} Thinking...</button><div class="thought-content" style="white-space:pre-wrap;margin-top:4px"></div>`;
+      div.innerHTML = `<button class="thought-toggle">${icon('bulb',14)} ${esc(t('thinking'))}</button><div class="thought-content" style="white-space:pre-wrap;margin-top:4px"></div>`;
       div.querySelector('.thought-toggle').onclick = () => {
         const content = div.querySelector('.thought-content');
         content.style.display = content.style.display === 'none' ? '' : 'none';
@@ -310,7 +310,7 @@ function addToolCard(d) {
       <span class="tool-title">${esc(d.title||d.kind||'Tool')}</span>
       <span class="tool-badge ${d.status||'pending'}">${d.status||'pending'}</span>
     </div>
-    ${contentText ? `<div class="tool-content" style="display:none"><pre>${contentText}</pre></div><button class="tool-content-toggle">Show details</button>` : ''}
+    ${contentText ? `<div class="tool-content" style="display:none"><pre>${contentText}</pre></div><button class="tool-content-toggle">${t('show_details')}</button>` : ''}
     ${locs ? `<div class="tool-locations">${locs}</div>` : ''}
   `;
   attachToolToggle(div);
@@ -335,7 +335,7 @@ function updateToolCard(d) {
       tc.style.display = 'none';
       const btn = document.createElement('button');
       btn.className = 'tool-content-toggle';
-      btn.textContent = 'Show details';
+      btn.textContent = t('show_details');
       div.querySelector('.tool-header').after(tc);
       tc.after(btn);
       attachToolToggle(div);
@@ -366,7 +366,7 @@ function attachToolToggle(div) {
     if (!tc) return;
     const show = tc.style.display === 'none';
     tc.style.display = show ? '' : 'none';
-    btn.textContent = show ? 'Hide details' : 'Show details';
+    btn.textContent = show ? t('hide_details') : t('show_details');
   };
 }
 function renderDiff(text) {
@@ -396,11 +396,11 @@ function handleDone(d) {
     const tc = c.thoughtEl.querySelector('.thought-content');
     if (tc) tc.style.display = 'none';
     const tg = c.thoughtEl.querySelector('.thought-toggle');
-    if (tg) tg.innerHTML = `${icon('bulb',14)} Thought (${(c.thoughtBuf||'').length} chars)`;
+    if (tg) tg.innerHTML = `${icon('bulb',14)} ${esc(t('thought_chars', (c.thoughtBuf||'').length))}`;
     c.thoughtEl = null; c.thoughtBuf = '';
   }
   c.tools.clear();
-  appendMsg(sid, `<div class="msg msg-done">${icon('check',14)} Done (${esc(d.stopReason||'completed')})</div>`);
+  appendMsg(sid, `<div class="msg msg-done">${icon('check',14)} ${esc(t('done_label', d.stopReason||'completed'))}</div>`);
   if (d.usage) renderUsage(d.usage);
 }
 
@@ -496,22 +496,22 @@ function updateBadge(status) {
 
 // ===== SIDEBAR =====
 function sessionDateLabel(ts) {
-  if (!ts) return 'Older';
+  if (!ts) return t('date_older');
   const now = new Date(), d = new Date(ts);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate()-7);
   const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate()-30);
-  if (d >= today) return 'Today';
-  if (d >= yesterday) return 'Yesterday';
-  if (d >= weekAgo) return 'Previous 7 Days';
-  if (d >= monthAgo) return 'Previous 30 Days';
-  return d.toLocaleDateString(undefined, { year:'numeric', month:'long' });
+  if (d >= today) return t('date_today');
+  if (d >= yesterday) return t('date_yesterday');
+  if (d >= weekAgo) return t('date_prev_7');
+  if (d >= monthAgo) return t('date_prev_30');
+  return d.toLocaleDateString(getLang() === 'ja' ? 'ja-JP' : undefined, { year:'numeric', month:'long' });
 }
 function renderSidebar() {
   const list = $('sidebar-sessions');
   list.innerHTML = '';
-  if (!S.sessions.length) { list.innerHTML = '<div class="sidebar-empty">No sessions yet</div>'; return; }
+  if (!S.sessions.length) { list.innerHTML = '<div class="sidebar-empty">' + esc(t('sidebar_empty')) + '</div>'; return; }
   const sorted = [...S.sessions].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
   let lastLabel = '';
   for (const s of sorted) {
@@ -614,9 +614,9 @@ function renderModes() {
 function renderUsage(u) {
   if (!u) return;
   const parts = [];
-  if (u.percentRemaining != null) parts.push(`Quota: ${u.percentRemaining}%`);
+  if (u.percentRemaining != null) parts.push(`${t('usage_quota')}: ${u.percentRemaining}%`);
   if (u.premiumRequestsUsed != null || u.premiumRequestsLimit != null) {
-    parts.push(`Premium: ${u.premiumRequestsUsed ?? '?'}/${u.premiumRequestsLimit ?? '?'}`);
+    parts.push(`${t('usage_premium')}: ${u.premiumRequestsUsed ?? '?'}/${u.premiumRequestsLimit ?? '?'}`);
   }
   if (u.contextSize != null) parts.push(`ctx: ${(u.contextSize/1000).toFixed(0)}k`);
   if (u.inputTokens != null) parts.push(`in: ${u.inputTokens}`);
@@ -650,7 +650,7 @@ function renderSettings() {
     }
     if (div.innerHTML) body.appendChild(div);
   }
-  if (!body.children.length) body.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0">No configuration options available</div>';
+  if (!body.children.length) body.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0">' + esc(t('settings_empty')) + '</div>';
 }
 
 // ===== PLAN =====
@@ -693,10 +693,10 @@ function showPermission(d) {
     return `<button class="perm-btn ${cls}" data-oid="${o.optionId}">${esc(o.name)}</button>`;
   }).join('');
   card.innerHTML = `
-    <div class="perm-title">${icon('lock')} ${esc(d.title||d.toolCall?.title||'Permission Required')}</div>
+    <div class="perm-title">${icon('lock')} ${esc(d.title||d.toolCall?.title||t('perm_title'))}</div>
     ${detail}
     <div class="perm-options">${opts}</div>
-    <div class="perm-feedback"><input type="text" placeholder="Reject with feedback..."/><button>Reject</button></div>
+    <div class="perm-feedback"><input type="text" placeholder="${esc(t('perm_reject_placeholder'))}"/><button>${esc(t('perm_reject'))}</button></div>
   `;
   const finish = () => { card.remove(); if (!queue.children.length) overlay.hidden = true; };
   card.querySelectorAll('.perm-btn').forEach(btn => {
@@ -814,6 +814,59 @@ function createNewSession() {
   $('new-session-dialog').hidden = true;
 }
 
+// ===== I18N =====
+function applyI18n() {
+  document.documentElement.lang = getLang();
+  // Auth
+  $('auth-user').placeholder = t('auth_user_placeholder');
+  $('auth-pass').placeholder = t('auth_pass_placeholder');
+  $('auth-subtitle').textContent = t('copilot_remote');
+  // Sidebar
+  $('logout-btn').innerHTML = `${icon('logout',14)} ${esc(t('logout'))}`;
+  // Header tooltips
+  $('hamburger-btn').title = t('btn_menu');
+  $('theme-btn').title = t('btn_theme');
+  $('settings-btn').title = t('btn_settings');
+  $('session-add-btn').title = t('btn_new_session');
+  $('yolo-select').title = t('perm_level');
+  // YOLO options
+  const yoloSel = $('yolo-select');
+  yoloSel.options[0].textContent = t('yolo_normal');
+  yoloSel.options[1].textContent = t('yolo_trust_reads');
+  yoloSel.options[2].textContent = t('yolo_trust_most');
+  yoloSel.options[3].textContent = t('yolo_yolo');
+  // Input area
+  $('prompt').placeholder = t('prompt_placeholder');
+  $('attach-btn').title = t('btn_attach');
+  $('send-btn').title = t('btn_send');
+  $('cancel-btn').title = t('btn_cancel');
+  $('scroll-bottom-btn').title = t('btn_scroll_bottom');
+  $('cwd-browse').title = t('btn_browse');
+  // Dialogs
+  const nsd = $('new-session-dialog');
+  nsd.querySelector('h3').textContent = t('dlg_new_session');
+  nsd.querySelectorAll('label')[0].textContent = t('dlg_working_dir');
+  nsd.querySelectorAll('label')[1].textContent = t('dlg_title_optional');
+  $('new-session-cwd').placeholder = t('dlg_placeholder_cwd');
+  $('new-session-title').placeholder = t('dlg_placeholder_title');
+  $('new-session-cancel').textContent = t('btn_cancel');
+  $('new-session-create').textContent = t('btn_create');
+  // File browser
+  $('file-browser-dialog').querySelector('h3').textContent = t('dlg_browse_dir');
+  $('file-browser-cancel').textContent = t('btn_cancel');
+  $('file-browser-select').textContent = t('btn_select');
+  // Settings / Plan
+  $('settings-panel').querySelector('h3').textContent = t('settings_title');
+  $('plan-panel').querySelector('.plan-header span').textContent = t('plan_title');
+  // Language toggle
+  $('lang-btn').textContent = t('lang_label');
+}
+function toggleLang() {
+  setLang(getLang() === 'en' ? 'ja' : 'en');
+  applyI18n();
+  renderSidebar();
+}
+
 // ===== INIT =====
 function init() {
   initTheme();
@@ -823,7 +876,7 @@ function init() {
   $('theme-btn').innerHTML = icon(document.documentElement.getAttribute('data-theme') === 'dark' ? 'moon' : 'sun');
   $('settings-btn').innerHTML = icon('settings');
   $('session-add-btn').innerHTML = icon('plus');
-  $('logout-btn').innerHTML = `${icon('logout',14)} Logout`;
+  $('logout-btn').innerHTML = `${icon('logout',14)} ${esc(t('logout'))}`;
   $('attach-btn').innerHTML = icon('attach');
   $('send-btn').innerHTML = icon('send');
   $('cancel-btn').innerHTML = icon('stop');
@@ -831,6 +884,9 @@ function init() {
   $('file-browser-close').innerHTML = icon('x');
   $('settings-close').innerHTML = icon('x');
   $('plan-toggle').innerHTML = icon('chevDown');
+
+  // Apply i18n to all static elements
+  applyI18n();
 
   // Event listeners
   $('auth-form').addEventListener('submit', doAuth);
@@ -863,6 +919,7 @@ function init() {
   };
   $('model-select').onchange = (e) => { if (socket) socket.emit('set_model', { sessionId: S.sid, modelId: e.target.value }); };
   $('yolo-select').onchange = (e) => { if (socket) socket.emit('set_yolo', { sessionId: S.sid, level: Number(e.target.value) }); };
+  $('lang-btn').onclick = toggleLang;
   $('logout-btn').onclick = async () => {
     await fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + S.token } }).catch(() => {});
     S.token = null; localStorage.removeItem('aether-token'); localStorage.removeItem('aether-workspace');

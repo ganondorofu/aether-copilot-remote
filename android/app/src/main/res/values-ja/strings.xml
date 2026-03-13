@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Aether</string>
+    <!-- Auth -->
+    <string name="copilot_remote_control">Copilot リモートコントロール</string>
+    <string name="auth_setup_subtitle">アカウントを作成してください</string>
+    <string name="auth_login_subtitle">サインインしてください</string>
+    <string name="auth_create_account">アカウント作成</string>
+    <string name="auth_sign_in">サインイン</string>
+    <string name="auth_sign_out">サインアウト</string>
+    <string name="auth_server_url">サーバーURL</string>
+    <string name="auth_username">ユーザー名</string>
+    <string name="auth_password">パスワード</string>
+    <string name="auth_password_min">パスワード（6文字以上）</string>
+    <string name="auth_test_connection">接続テスト</string>
+    <!-- Sidebar / sessions -->
+    <string name="no_sessions">セッションがありません</string>
+    <string name="new_session">新規セッション</string>
+    <string name="new_session_desc">このセッションの作業ディレクトリを指定してください。</string>
+    <string name="working_directory">作業ディレクトリ</string>
+    <string name="session_prefix">セッション: %s</string>
+    <!-- Buttons -->
+    <string name="create">作成</string>
+    <string name="cancel">キャンセル</string>
+    <string name="update">更新</string>
+    <string name="later">後で</string>
+    <string name="select">選択</string>
+    <!-- Status -->
+    <string name="connecting">接続中…</string>
+    <string name="connected">接続済み</string>
+    <string name="disconnected">切断</string>
+    <!-- YOLO levels -->
+    <string name="yolo_normal">通常</string>
+    <string name="yolo_trust_reads">読取を信頼</string>
+    <string name="yolo_trust_most">ほぼ信頼</string>
+    <string name="yolo_yolo">YOLO</string>
+    <!-- Content descriptions -->
+    <string name="cd_menu">メニュー</string>
+    <string name="cd_select_yolo">YOLOレベル選択</string>
+    <string name="cd_toggle_theme">テーマ切替</string>
+    <string name="cd_settings">設定</string>
+    <string name="cd_attach_file">ファイル添付</string>
+    <string name="cd_reconnect">再接続</string>
+    <string name="cd_cancel">キャンセル</string>
+    <string name="cd_send">送信</string>
+    <string name="cd_scroll_bottom">一番下へ</string>
+    <string name="cd_collapse">折りたたむ</string>
+    <string name="cd_expand">展開する</string>
+    <string name="cd_delete">削除</string>
+    <!-- Chat -->
+    <string name="message_placeholder">メッセージ…</string>
+    <string name="thinking_expanded">💭 思考中 ▾</string>
+    <string name="thinking_collapsed">💭 思考中…（タップで展開）</string>
+    <string name="reject_feedback">フィードバック付きで拒否…</string>
+    <string name="reject_with_feedback">フィードバック付きで拒否</string>
+    <!-- Settings -->
+    <string name="select_model">モデル選択</string>
+    <string name="slash_commands">スラッシュコマンド</string>
+    <string name="settings">設定</string>
+    <string name="app_lock">アプリロック</string>
+    <string name="app_lock_desc">アプリ起動時にログインを要求する</string>
+    <string name="no_config_options">設定オプションはありません</string>
+    <!-- Usage -->
+    <string name="usage_quota">残量: %s%%</string>
+    <string name="usage_premium">プレミアム: %1$s/%2$s</string>
+    <!-- Date groups -->
+    <string name="date_today">今日</string>
+    <string name="date_yesterday">昨日</string>
+    <string name="date_prev_7">過去7日間</string>
+    <string name="date_prev_30">過去30日間</string>
+    <string name="date_older">それ以前</string>
+</resources>

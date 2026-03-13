@@ -1,4 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Aether</string>
+    <!-- Auth -->
+    <string name="copilot_remote_control">Copilot Remote Control</string>
+    <string name="auth_setup_subtitle">Create your account to get started</string>
+    <string name="auth_login_subtitle">Sign in to continue</string>
+    <string name="auth_create_account">Create Account</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_sign_out">Sign Out</string>
+    <string name="auth_server_url">Server URL</string>
+    <string name="auth_username">Username</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_password_min">Password (min 6 chars)</string>
+    <string name="auth_test_connection">Test Connection</string>
+    <!-- Sidebar / sessions -->
+    <string name="no_sessions">No sessions yet</string>
+    <string name="new_session">New Session</string>
+    <string name="new_session_desc">Specify a working directory for this session.</string>
+    <string name="working_directory">Working Directory</string>
+    <string name="session_prefix">Session: %s</string>
+    <!-- Buttons -->
+    <string name="create">Create</string>
+    <string name="cancel">Cancel</string>
+    <string name="update">Update</string>
+    <string name="later">Later</string>
+    <string name="select">Select</string>
+    <!-- Status -->
+    <string name="connecting">Connecting…</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <!-- YOLO levels -->
+    <string name="yolo_normal">Normal</string>
+    <string name="yolo_trust_reads">Trust reads</string>
+    <string name="yolo_trust_most">Trust most</string>
+    <string name="yolo_yolo">YOLO</string>
+    <!-- Content descriptions -->
+    <string name="cd_menu">Menu</string>
+    <string name="cd_select_yolo">Select YOLO Level</string>
+    <string name="cd_toggle_theme">Toggle Theme</string>
+    <string name="cd_settings">Settings</string>
+    <string name="cd_attach_file">Attach File</string>
+    <string name="cd_reconnect">Reconnect</string>
+    <string name="cd_cancel">Cancel</string>
+    <string name="cd_send">Send</string>
+    <string name="cd_scroll_bottom">Scroll to bottom</string>
+    <string name="cd_collapse">Collapse</string>
+    <string name="cd_expand">Expand</string>
+    <string name="cd_delete">Delete</string>
+    <!-- Chat -->
+    <string name="message_placeholder">Message…</string>
+    <string name="thinking_expanded">💭 Thinking ▾</string>
+    <string name="thinking_collapsed">💭 Thinking… (tap to expand)</string>
+    <string name="reject_feedback">Reject with feedback…</string>
+    <string name="reject_with_feedback">Reject with feedback</string>
+    <!-- Settings -->
+    <string name="select_model">Select Model</string>
+    <string name="slash_commands">Slash Commands</string>
+    <string name="settings">Settings</string>
+    <string name="app_lock">App Lock</string>
+    <string name="app_lock_desc">Require login each time app starts</string>
+    <string name="no_config_options">No configuration options available</string>
+    <!-- Usage -->
+    <string name="usage_quota">Quota: %s%%</string>
+    <string name="usage_premium">Premium: %1$s/%2$s</string>
+    <!-- Date groups -->
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
+    <string name="date_prev_7">Previous 7 Days</string>
+    <string name="date_prev_30">Previous 30 Days</string>
+    <string name="date_older">Older</string>
 </resources>
