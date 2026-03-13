@@ -227,13 +227,32 @@ function setupProc(ws) {
     try {
       ws.send({ type: "status", message: "Restarting...", level: "info" });
       ws.proc = buildProc(); setupProc(ws); await initACP(ws);
-      const first = ws.sessions.values().next().value;
-      const cwd = first?.cwd || COPILOT_CWD;
-      const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
-      ws.sessions.clear(); ws.activeSessionId = sr.sessionId;
-      ws.sessions.set(sr.sessionId, { cwd, title: first?.title||"Restarted", busy: false, queue: [], titleSet: true, createdAt: first?.createdAt || Date.now(), lastActiveAt: Date.now(), messageCount: 0, modelId: sr.models?.currentModelId || sr.models?.availableModels?.[0]?.id || '', yoloLevel: first?.yoloLevel ?? 0 });
-      if (sr.modes) { ws.availableModes = sr.modes.availableModes||[]; ws.currentModeId = sr.modes.currentModeId||""; }
-      if (sr.models) { ws.availableModels = sr.models.availableModels||[]; }
+      // Recreate ACP sessions for ALL existing sessions (preserve history)
+      const oldSessions = [...ws.sessions.entries()];
+      const newSessions = new Map();
+      let firstSr = null;
+      for (const [oldSid, sMeta] of oldSessions) {
+        const cwd = sMeta.cwd || COPILOT_CWD;
+        try {
+          const sr = await ws.conn.newSession({ cwd, mcpServers: [] });
+          if (!firstSr) firstSr = sr;
+          // Copy history from old session to new
+          const oldMsgs = store.loadMessages(oldSid).filter(m => Workspace.REPLAY_TYPES.has(m.type));
+          if (oldMsgs.length > 0) {
+            for (const m of oldMsgs) { m.sessionId = sr.sessionId; store.appendMessage(sr.sessionId, m); }
+          }
+          newSessions.set(sr.sessionId, { ...sMeta, busy: false, queue: [] });
+          if (ws.activeSessionId === oldSid) ws.activeSessionId = sr.sessionId;
+          // Restore per-session model
+          if (sMeta.modelId) { try { await ws.conn.unstable_setSessionModel({ sessionId: sr.sessionId, modelId: sMeta.modelId }); } catch {} }
+        } catch (e2) { console.error(`  Failed to recreate session ${oldSid}: ${e2}`); }
+      }
+      ws.sessions = newSessions;
+      if (!ws.sessions.has(ws.activeSessionId) && ws.sessions.size > 0) {
+        ws.activeSessionId = ws.sessions.keys().next().value;
+      }
+      if (firstSr?.modes) { ws.availableModes = firstSr.modes.availableModes||[]; ws.currentModeId = firstSr.modes.currentModeId||""; }
+      if (firstSr?.models) { ws.availableModels = firstSr.models.availableModels||[]; }
       ws.alive = true; ws.saveMeta();
       ws.send({ type: "status", message: "Copilot restarted", level: "info" });
       for (const s of ws.sockets) sendInit(ws, s, true);
