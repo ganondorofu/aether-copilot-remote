@@ -649,11 +649,14 @@ class CopilotViewModel : ViewModel() {
                 updateLastAgent(targetSid)
             }
             "thought" -> {
+                flushAgent()
                 flushUser()
                 thoughtBuffer.append(text)
                 updateLastThought(targetSid)
             }
             "user" -> {
+                flushAgent()
+                flushThought()
                 userBuffer.append(text)
                 updateLastUser(targetSid)
             }
