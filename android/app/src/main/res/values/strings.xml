@@ -69,4 +69,13 @@
     <string name="date_prev_7">Previous 7 Days</string>
     <string name="date_prev_30">Previous 30 Days</string>
     <string name="date_older">Older</string>
+    <!-- About -->
+    <string name="about">About</string>
+    <string name="version_label">Version</string>
+    <string name="open_source_licenses">Open Source Licenses</string>
+    <string name="licenses_detail">This app uses the following open source libraries:\n\n• Jetpack Compose — Apache 2.0\n• Material 3 — Apache 2.0\n• OkHttp — Apache 2.0\n• Socket.IO Client — MIT\n• Markwon — Apache 2.0\n• Kotlinx Serialization — Apache 2.0\n• Kotlinx Coroutines — Apache 2.0\n• AndroidX Biometric — Apache 2.0\n• AndroidX DataStore — Apache 2.0</string>
+    <!-- Reconnect -->
+    <string name="reconnecting">Reconnecting…</string>
+    <string name="disconnected_tap_reconnect">Disconnected — tap to reconnect</string>
+    <string name="update_available">v%s available</string>
 </resources>

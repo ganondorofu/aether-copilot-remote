@@ -69,4 +69,13 @@
     <string name="date_prev_7">過去7日間</string>
     <string name="date_prev_30">過去30日間</string>
     <string name="date_older">それ以前</string>
+    <!-- About -->
+    <string name="about">アプリについて</string>
+    <string name="version_label">バージョン</string>
+    <string name="open_source_licenses">オープンソースライセンス</string>
+    <string name="licenses_detail">このアプリは以下のオープンソースライブラリを使用しています:\n\n• Jetpack Compose — Apache 2.0\n• Material 3 — Apache 2.0\n• OkHttp — Apache 2.0\n• Socket.IO Client — MIT\n• Markwon — Apache 2.0\n• Kotlinx Serialization — Apache 2.0\n• Kotlinx Coroutines — Apache 2.0\n• AndroidX Biometric — Apache 2.0\n• AndroidX DataStore — Apache 2.0</string>
+    <!-- Reconnect -->
+    <string name="reconnecting">再接続中…</string>
+    <string name="disconnected_tap_reconnect">切断されました — タップして再接続</string>
+    <string name="update_available">v%s が利用可能</string>
 </resources>

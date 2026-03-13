@@ -438,6 +438,30 @@ fun CopilotScreen(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+            // About section
+            Text(stringResource(R.string.about), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+            val pkgInfo = remember {
+                try { context.packageManager.getPackageInfo(context.packageName, 0) } catch (_: Exception) { null }
+            }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.version_label)) },
+                supportingContent = { Text("${pkgInfo?.versionName ?: "?"} (${pkgInfo?.let { if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode else @Suppress("DEPRECATION") it.versionCode.toLong() } ?: 0})", fontSize = 12.sp) },
+            )
+            var showLicenses by remember { mutableStateOf(false) }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.open_source_licenses)) },
+                modifier = Modifier.clickable { showLicenses = !showLicenses },
+            )
+            if (showLicenses) {
+                Text(
+                    stringResource(R.string.licenses_detail),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             
             // Logout button
             TextButton(
@@ -480,6 +504,7 @@ fun CopilotScreen(
                     vm.deleteSession(sessionId)
                 },
                 connected = connection.connected,
+                onReconnect = { vm.reconnect() },
             )
         },
     ) {
@@ -619,9 +644,7 @@ fun CopilotScreen(
                     }
                     // Reconnect
                     if (!connection.connected) {
-                        IconButton(onClick = { 
-                            // Reconnect not implemented in this version
-                        }) {
+                        IconButton(onClick = { vm.reconnect() }) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_reconnect))
                         }
                     }
@@ -758,7 +781,7 @@ fun CopilotScreen(
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "v${updateInfo.versionName} available",
+                                stringResource(R.string.update_available, updateInfo.versionName),
                                 fontSize = 13.sp, fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
@@ -848,6 +871,7 @@ fun NavigationDrawerContent(
     onNewSession: () -> Unit,
     onDeleteSession: (String) -> Unit,
     connected: Boolean,
+    onReconnect: () -> Unit = {},
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(320.dp),
@@ -881,6 +905,7 @@ fun NavigationDrawerContent(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = if (!connected) Modifier.clickable { onReconnect() } else Modifier,
                     ) {
                         Surface(
                             shape = CircleShape,
@@ -888,7 +913,7 @@ fun NavigationDrawerContent(
                             modifier = Modifier.size(6.dp),
                         ) {}
                         Text(
-                            if (connected) stringResource(R.string.connected) else stringResource(R.string.disconnected),
+                            if (connected) stringResource(R.string.connected) else stringResource(R.string.disconnected_tap_reconnect),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

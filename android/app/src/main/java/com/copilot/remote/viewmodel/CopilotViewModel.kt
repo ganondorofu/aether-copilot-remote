@@ -100,6 +100,7 @@ class CopilotViewModel : ViewModel() {
         val apkUrl: String = "",
         val downloading: Boolean = false,
         val progress: Float = 0f,
+        val dismissedCode: Int = 0,
     )
     private val _updateInfo = MutableStateFlow(UpdateInfo())
     val updateInfo: StateFlow<UpdateInfo> = _updateInfo.asStateFlow()
@@ -242,12 +243,14 @@ class CopilotViewModel : ViewModel() {
                         val serverCode = obj.optInt("versionCode", 0)
                         val serverName = obj.optString("versionName", "")
                         val apkUrl = obj.optString("apkUrl", "")
-                        if (serverCode > currentVersionCode) {
+                        val dismissed = _updateInfo.value.dismissedCode
+                        if (serverCode > currentVersionCode && serverCode > dismissed) {
                             _updateInfo.value = UpdateInfo(
                                 available = true,
                                 versionName = serverName,
                                 versionCode = serverCode,
                                 apkUrl = apkUrl,
+                                dismissedCode = dismissed,
                             )
                         }
                     }
@@ -321,17 +324,26 @@ class CopilotViewModel : ViewModel() {
     }
 
     fun dismissUpdate() {
-        _updateInfo.update { it.copy(available = false) }
+        _updateInfo.update { it.copy(available = false, dismissedCode = it.versionCode) }
     }
 
     // ── Connection methods ──
+    private var _lastServerUrl: String = ""
+    private var _lastAuthToken: String? = null
+    private var _lastCwd: String? = null
+    private var _lastWorkspaceId: String? = null
+
     fun connect(serverUrl: String, authToken: String?, cwd: String? = null, workspaceId: String? = null) {
         _serverUrl.value = serverUrl
+        _lastServerUrl = serverUrl
+        _lastAuthToken = authToken
+        _lastCwd = cwd
+        _lastWorkspaceId = workspaceId ?: _connection.value.workspaceId
         // Cancel previous event collector to prevent duplicates
         eventCollectionJob?.cancel()
         // Keep workspaceId during reconnect — only reset session state
         _connection.update { it.copy(connected = false, sessionId = null, sessions = emptyList()) }
-        client.connect(serverUrl, authToken, cwd, workspaceId)
+        client.connect(serverUrl, authToken, cwd, _lastWorkspaceId)
 
         eventCollectionJob = viewModelScope.launch {
             client.events.collect { event ->
@@ -434,6 +446,12 @@ class CopilotViewModel : ViewModel() {
         client.disconnect()
         // Preserve workspaceId so we can reconnect to the same workspace
         _connection.update { it.copy(connected = false, sessionId = null, sessions = emptyList()) }
+    }
+
+    fun reconnect() {
+        if (_lastServerUrl.isNotBlank()) {
+            connect(_lastServerUrl, _lastAuthToken, _lastCwd, _lastWorkspaceId)
+        }
     }
 
     fun sendPrompt(text: String) {
